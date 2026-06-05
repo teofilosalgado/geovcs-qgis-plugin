@@ -15,16 +15,23 @@ from qgis.gui import QgsDataItemGuiProvider
 from qgis.PyQt.QtWidgets import QAction, QDialog
 from qgis.utils import iface
 
+from geovcs.src.constant import PROVIDER_KEY
 from geovcs.src.dialog import GeoVCSCreateConnectionDialog
-from geovcs.src.model import GeoVCSConnection, GeoVCSSettings
+from geovcs.src.model import GeoVCSConnection, GeoVCSLayer, GeoVCSSettings
 from geovcs.src.util import get_icon
-
-PROVIDER_KEY = "GeoVCS"
 
 
 class GeoVCSLayerItem(QgsLayerItem):
-    def __init__(self, parent, name, path, uri, layerType, providerKey):
-        super().__init__(parent, name, path, uri, layerType, providerKey)
+    def __init__(self, parent: QgsDataItem, geovcs_layer: GeoVCSLayer):
+        self.geovcs_layer: GeoVCSLayer = geovcs_layer
+        super().__init__(
+            parent,
+            geovcs_layer.name,
+            geovcs_layer.path,
+            geovcs_layer.uri,
+            geovcs_layer.layer_type,
+            geovcs_layer.provider_key,
+        )
         self.setCapabilitiesV2(Qgis.BrowserItemCapability.NoCapabilities)
         self.setState(Qgis.BrowserItemState.Populated)
 
@@ -33,12 +40,12 @@ class GeoVCSLayerItem(QgsLayerItem):
 
 
 class GeoVCSDataCollectionItem(QgsDataCollectionItem):
-    def __init__(self, parent: QgsDataItem, connection: GeoVCSConnection):
-        self.connection = connection
+    def __init__(self, parent: QgsDataItem, geovcs_connection: GeoVCSConnection):
+        self.geovcs_connection: GeoVCSConnection = geovcs_connection
         super().__init__(
             parent,
-            self.connection.name,
-            posixpath.join(parent.path(), self.connection.name),
+            self.geovcs_connection.name,
+            posixpath.join(parent.path(), self.geovcs_connection.name),
             PROVIDER_KEY,
         )
 
@@ -48,69 +55,39 @@ class GeoVCSDataCollectionItem(QgsDataCollectionItem):
     def hasChildren(self):
         return True
 
-    def _ogr_geometry_type_to_qgis_browser_layer_type(
-        self,
-        ogr_geometry_type,
-    ) -> Qgis.BrowserLayerType:
-        if ogr_geometry_type in (
-            ogr.wkbPoint,
-            ogr.wkbPoint25D,
-            ogr.wkbMultiPoint,
-            ogr.wkbMultiPoint25D,
-        ):
-            return Qgis.BrowserLayerType.Point
-        elif ogr_geometry_type in (
-            ogr.wkbLineString,
-            ogr.wkbLineString25D,
-            ogr.wkbMultiLineString,
-            ogr.wkbMultiLineString25D,
-        ):
-            return Qgis.BrowserLayerType.Line
-        elif ogr_geometry_type in (
-            ogr.wkbPolygon,
-            ogr.wkbPolygon25D,
-            ogr.wkbMultiPolygon,
-            ogr.wkbMultiPolygon25D,
-        ):
-            return Qgis.BrowserLayerType.Polygon
-        elif ogr_geometry_type == ogr.wkbNone:
-            return Qgis.BrowserLayerType.Table
-        else:
-            return Qgis.BrowserLayerType.NoType
-
     def createChildren(self):
-        items: GeoVCSLayerItem = []
+        items: list[GeoVCSLayerItem] = []
 
-        datasource = ogr.Open(self.connection.connection_string)
+        datasource = ogr.Open(self.geovcs_connection.connection_string)
         QgsMessageLog.logMessage(
-            f"Connected to GeoVCS {self.connection.name} using '{self.connection.connection_string}'",
+            f"Connected to GeoVCS {self.geovcs_connection.name} using '{self.geovcs_connection.connection_string}'",
             "GeoVCS",
-            Qgis.Info,
+            Qgis.MessageLevel.Success,
         )
         layer_count = datasource.GetLayerCount()
         QgsMessageLog.logMessage(
-            f"Found {layer_count} layers in {self.connection.name}",
+            f"Found {layer_count} layers in {self.geovcs_connection.name}",
             "GeoVCS",
-            Qgis.Info,
+            Qgis.MessageLevel.Success,
         )
 
         for i in range(layer_count):
             layer = datasource.GetLayer(i)
             item = GeoVCSLayerItem(
                 self,
-                layer.GetName(),
-                posixpath.join(self.path(), layer.GetName()),
-                None,
-                self._ogr_geometry_type_to_qgis_browser_layer_type(layer.GetGeomType()),
-                posixpath.join(
-                    f"/{PROVIDER_KEY}", self.connection.name, layer.GetName()
+                GeoVCSLayer(
+                    layer.GetName(),
+                    posixpath.join(self.path(), layer.GetName()),
+                    layer.GetGeomType(),
+                    self.geovcs_connection,
                 ),
             )
+
             items.append(item)
             QgsMessageLog.logMessage(
-                f"Layer '{layer.GetName()}' '{layer.GetGeomType()}' loaded from '{self.connection.name}'",
+                f"Layer '{item.geovcs_layer.name}' '{item.geovcs_layer.layer_type}' loaded from '{item.geovcs_layer.uri}'",
                 "GeoVCS",
-                Qgis.Info,
+                Qgis.MessageLevel.Success,
             )
         datasource = None
 
@@ -156,6 +133,9 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
         return "GeoVCS"
 
     def populateContextMenu(self, item, menu, selectedItems, context):
+        if menu is None:
+            return
+
         if isinstance(item, GeoVCSConnectionsRootItem):
             action_refresh_connection = QAction(
                 QgsApplication.getThemeIcon("/mActionAdd.svg"),

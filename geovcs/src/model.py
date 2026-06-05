@@ -1,10 +1,12 @@
 import posixpath
+import re
 from dataclasses import dataclass
 from typing import Any, Generator
 
+from osgeo import ogr
 from qgis.core import Qgis, QgsMessageLog, QgsSettings
 
-BASE_KEY = "plugins/geovcs"
+from geovcs.src.constant import BASE_KEY, PROVIDER_KEY
 
 
 @dataclass
@@ -28,6 +30,72 @@ class GeoVCSConnection:
         return value
 
 
+class GeoVCSLayer:
+    def __init__(
+        self,
+        name: str,
+        path: str,
+        ogr_layer_type,
+        geovcs_connection: GeoVCSConnection,
+        branch: str = "main",
+    ):
+        self.name: str = name
+        self.path: str = path
+        self.layer_type: Qgis.BrowserLayerType = (
+            self._ogr_geometry_type_to_qgis_browser_layer_type(ogr_layer_type)
+        )
+        QgsMessageLog.logMessage(
+            f"Layer '{name}' '{ogr_layer_type}' -> '{self.layer_type}'",
+            "GeoVCS",
+            Qgis.MessageLevel.Success,
+        )
+        self.geovcs_connection: GeoVCSConnection = geovcs_connection
+        self.provider_key: str = posixpath.join(
+            f"/{PROVIDER_KEY}", self.geovcs_connection.name, self.name
+        )
+        self.branch: str = branch
+
+    @property
+    def uri(self) -> str:
+        connection_string = re.sub(
+            r"^MySQL:(\w+),",
+            rf"MySQL:\1/{self.branch},",
+            self.geovcs_connection.connection_string,
+        )
+        uri = f"{connection_string},tables={self.name}"
+        return uri
+
+    def _ogr_geometry_type_to_qgis_browser_layer_type(
+        self,
+        ogr_geometry_type,
+    ) -> Qgis.BrowserLayerType:
+        if ogr_geometry_type in (
+            ogr.wkbPoint,
+            ogr.wkbPoint25D,
+            ogr.wkbMultiPoint,
+            ogr.wkbMultiPoint25D,
+        ):
+            return Qgis.BrowserLayerType.Point
+        elif ogr_geometry_type in (
+            ogr.wkbLineString,
+            ogr.wkbLineString25D,
+            ogr.wkbMultiLineString,
+            ogr.wkbMultiLineString25D,
+        ):
+            return Qgis.BrowserLayerType.Line
+        elif ogr_geometry_type in (
+            ogr.wkbPolygon,
+            ogr.wkbPolygon25D,
+            ogr.wkbMultiPolygon,
+            ogr.wkbMultiPolygon25D,
+        ):
+            return Qgis.BrowserLayerType.Polygon
+        elif ogr_geometry_type == ogr.wkbNone:
+            return Qgis.BrowserLayerType.Table
+        else:
+            return Qgis.BrowserLayerType.NoType
+
+
 class GeoVCSSettings:
     @staticmethod
     def write_object(key: str, obj):
@@ -38,7 +106,9 @@ class GeoVCSSettings:
                 continue
             final_key = posixpath.join(BASE_KEY, key, attr_name)
             QgsMessageLog.logMessage(
-                f"Wrote '{attr_value}' to '{final_key}'", "GeoVCS", Qgis.Success
+                f"Wrote '{attr_value}' to '{final_key}'",
+                "GeoVCS",
+                Qgis.MessageLevel.Success,
             )
             settings.setValue(final_key, attr_value)
 
@@ -54,7 +124,7 @@ class GeoVCSSettings:
             QgsMessageLog.logMessage(
                 f"Read '{value}' from '{posixpath.join(BASE_KEY, base_key, key)}'",
                 "GeoVCS",
-                Qgis.Success,
+                Qgis.MessageLevel.Success,
             )
         settings.endGroup()
 
@@ -70,7 +140,7 @@ class GeoVCSSettings:
 
         for group in groups:
             QgsMessageLog.logMessage(
-                f"Read: '{group}' from '{key}'", "GeoVCS", Qgis.Success
+                f"Read: '{group}' from '{key}'", "GeoVCS", Qgis.MessageLevel.Success
             )
             yield group
         settings.endGroup()
