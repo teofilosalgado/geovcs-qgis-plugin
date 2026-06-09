@@ -16,7 +16,11 @@ from qgis.PyQt.QtWidgets import QAction, QDialog
 from qgis.utils import iface
 
 from geovcs.src.constant import PROVIDER_KEY
-from geovcs.src.dialog import GeoVCSCreateConnectionDialog
+from geovcs.src.form import (
+    GeoVCSDialogConnectionCreate,
+    GeoVCSDialogConnectionEdit,
+    GeoVCSDialogVersionManager,
+)
 from geovcs.src.model import GeoVCSConnection, GeoVCSLayer, GeoVCSSettings
 from geovcs.src.util import get_icon
 
@@ -44,7 +48,7 @@ class GeoVCSDataCollectionItem(QgsDataCollectionItem):
         self.geovcs_connection: GeoVCSConnection = geovcs_connection
         super().__init__(
             parent,
-            self.geovcs_connection.name,
+            f"{self.geovcs_connection.name} ({self.geovcs_connection.branch})",
             posixpath.join(parent.path(), self.geovcs_connection.name),
             PROVIDER_KEY,
         )
@@ -85,7 +89,7 @@ class GeoVCSDataCollectionItem(QgsDataCollectionItem):
 
             items.append(item)
             QgsMessageLog.logMessage(
-                f"Layer '{item.geovcs_layer.name}' '{item.geovcs_layer.layer_type}' loaded from '{item.geovcs_layer.uri}'",
+                f"Layer '{item.geovcs_layer.name}' of type '{item.geovcs_layer.layer_type.name}' loaded from '{item.geovcs_layer.uri}'",
                 "GeoVCS",
                 Qgis.MessageLevel.Success,
             )
@@ -106,9 +110,9 @@ class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
 
     def createChildren(self):
         items: list[GeoVCSDataCollectionItem] = []
-        for key in GeoVCSSettings.iterate("connections"):
+        for group in GeoVCSSettings.iterate_groups("connections"):
             connection = GeoVCSSettings.read_object(
-                posixpath.join("connections", key), GeoVCSConnection
+                posixpath.join("connections", group), GeoVCSConnection
             )
             item = GeoVCSDataCollectionItem(self, connection)
             items.append(item)
@@ -147,7 +151,7 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
             )
             menu.addAction(action_refresh_connection)
 
-        if isinstance(item, GeoVCSDataCollectionItem):
+        elif isinstance(item, GeoVCSDataCollectionItem):
             action_refresh_connection = QAction(
                 QgsApplication.getThemeIcon("/mActionRefresh.svg"),
                 "Refresh",
@@ -158,17 +162,66 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
             )
             menu.addAction(action_refresh_connection)
 
+            action_edit_connection = QAction(
+                QgsApplication.getThemeIcon("/mActionToggleEditing.svg"),
+                "Edit",
+                menu,
+            )
+            action_edit_connection.triggered.connect(
+                lambda: self._edit_connection(item)
+            )
+            menu.addAction(action_edit_connection)
+
+            action_version_manager = QAction(
+                QgsApplication.getThemeIcon("/mIconQueryHistory.svg"),
+                "Version Manager...",
+                menu,
+            )
+            action_version_manager.triggered.connect(
+                lambda: self._version_manager(item)
+            )
+            menu.addAction(action_version_manager)
+
+            action_remove_connection = QAction(
+                QgsApplication.getThemeIcon("/mActionRemove.svg"),
+                "Remove",
+                menu,
+            )
+            action_remove_connection.triggered.connect(
+                lambda: self._remove_connection(item)
+            )
+            menu.addAction(action_remove_connection)
+
+    def _create_connection(self, item: GeoVCSConnectionsRootItem):
+        dialog_create_connection = GeoVCSDialogConnectionCreate()
+        if dialog_create_connection.exec() != QDialog.DialogCode.Accepted:
+            return
+        item.refresh()
+
     def _refresh_connection(self, item: GeoVCSDataCollectionItem):
         item.refresh()
 
-    def _create_connection(self, item: QgsConnectionsRootItem):
-        create_connection_dialog = GeoVCSCreateConnectionDialog()
-        if create_connection_dialog.exec() != QDialog.Accepted:
+    def _edit_connection(self, item: GeoVCSDataCollectionItem):
+        dialog_edit_connection = GeoVCSDialogConnectionEdit(item.geovcs_connection)
+        if dialog_edit_connection.exec() != QDialog.DialogCode.Accepted:
             return
+        item.refresh()
 
+    def _version_manager(self, item: GeoVCSDataCollectionItem):
+        dialog_edit_connection = GeoVCSDialogVersionManager(item.geovcs_connection)
+        if dialog_edit_connection.exec() != QDialog.DialogCode.Accepted:
+            return
+        item.refresh()
+
+    def _remove_connection(self, item: GeoVCSDataCollectionItem):
+        GeoVCSSettings.remove(
+            posixpath.join("connections", item.geovcs_connection.name)
+        )
         iface.messageBar().pushMessage(
-            "GeoVCS - Connection Created",
-            f"Database connection '{create_connection_dialog.get_data().name}' stored successfully.",
+            "GeoVCS - Connection Removed",
+            f"Database connection '{item.geovcs_connection.name}' removed successfully.",
             Qgis.MessageLevel.Success,
         )
-        item.refresh()
+        parent = item.parent()
+        if parent:
+            parent.refresh()

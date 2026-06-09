@@ -1,12 +1,6 @@
-"""
-QGIS GeoVCS - Main Plugin Class
-
-This module contains the main plugin class that manages the QGIS interface
-integration, menu items, toolbar buttons, and dockable panels.
-"""
-
 from qgis.core import QgsApplication
 from qgis.gui import QgisInterface, QgsGui
+from qgis.PyQt.QtWidgets import QComboBox, QLabel
 
 from geovcs.src.browser import GeoVCSDataItemGuiProvider, GeoVCSDataItemProvider
 
@@ -23,6 +17,18 @@ class GeoVCS:
 
         self.data_item_gui_provider = GeoVCSDataItemGuiProvider()
         QgsGui.dataItemGuiProviderRegistry().addProvider(self.data_item_gui_provider)
+
+        self.toolbar = self.iface.addToolBar("GeoVCS")
+        self.toolbar.setObjectName("GeoVCS")
+
+        self.branches_label = QLabel("Branch:")
+        self.toolbar.addWidget(self.branches_label)
+
+        self.branches_combo_box = QComboBox()
+        self.branches_combo_box.setMinimumWidth(150)
+        self.branches_combo_box.setDisabled(True)
+        self.branches_combo_box.setToolTip("Select a GeoVCS branch for current layer.")
+        self.toolbar.addWidget(self.branches_combo_box)
 
     def unload(self):
         if self.data_item_provider:

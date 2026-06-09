@@ -4,9 +4,9 @@ from dataclasses import dataclass
 from typing import Any, Generator
 
 from osgeo import ogr
-from qgis.core import Qgis, QgsMessageLog, QgsSettings
+from qgis.core import Qgis, QgsSettings
 
-from geovcs.src.constant import BASE_KEY, PROVIDER_KEY
+from geovcs.src.constant import BASE_KEY
 
 
 @dataclass
@@ -15,13 +15,14 @@ class GeoVCSConnection:
     host: str
     port: int
     database: str
+    branch: str
     username: str
     password: str
 
     @property
     def connection_string(self) -> str:
         value = (
-            f"MySQL:{self.database},"
+            f"MySQL:{self.database}/{self.branch},"
             f"host={self.host},"
             f"port={self.port},"
             f"user={self.username},"
@@ -44,15 +45,8 @@ class GeoVCSLayer:
         self.layer_type: Qgis.BrowserLayerType = (
             self._ogr_geometry_type_to_qgis_browser_layer_type(ogr_layer_type)
         )
-        QgsMessageLog.logMessage(
-            f"Layer '{name}' '{ogr_layer_type}' -> '{self.layer_type}'",
-            "GeoVCS",
-            Qgis.MessageLevel.Success,
-        )
         self.geovcs_connection: GeoVCSConnection = geovcs_connection
-        self.provider_key: str = posixpath.join(
-            f"/{PROVIDER_KEY}", self.geovcs_connection.name, self.name
-        )
+        self.provider_key: str = "ogr"
         self.branch: str = branch
 
     @property
@@ -98,6 +92,30 @@ class GeoVCSLayer:
 
 class GeoVCSSettings:
     @staticmethod
+    def key_exists(key: str) -> bool:
+        settings = QgsSettings()
+
+        final_key = posixpath.join(BASE_KEY, key)
+        has_value = settings.contains(final_key)
+
+        settings.beginGroup(final_key)
+        child_keys = settings.childKeys()
+        child_groups = settings.childGroups()
+        settings.endGroup()
+
+        has_groups = len(child_keys) > 0 or len(child_groups) > 0
+
+        if has_value or has_groups:
+            return True
+        return False
+
+    @staticmethod
+    def remove(key: str):
+        settings = QgsSettings()
+        final_key = posixpath.join(BASE_KEY, key)
+        settings.remove(final_key)
+
+    @staticmethod
     def write_object(key: str, obj):
         settings = QgsSettings()
 
@@ -105,11 +123,6 @@ class GeoVCSSettings:
             if attr_name.startswith("__") or callable(attr_value):
                 continue
             final_key = posixpath.join(BASE_KEY, key, attr_name)
-            QgsMessageLog.logMessage(
-                f"Wrote '{attr_value}' to '{final_key}'",
-                "GeoVCS",
-                Qgis.MessageLevel.Success,
-            )
             settings.setValue(final_key, attr_value)
 
     @staticmethod
@@ -121,17 +134,12 @@ class GeoVCSSettings:
         for key in settings.childKeys():
             value = settings.value(key)
             obj[key] = value
-            QgsMessageLog.logMessage(
-                f"Read '{value}' from '{posixpath.join(BASE_KEY, base_key, key)}'",
-                "GeoVCS",
-                Qgis.MessageLevel.Success,
-            )
         settings.endGroup()
 
         return obj_type(**obj)
 
     @staticmethod
-    def iterate(key: str) -> Generator[str, Any, None]:
+    def iterate_groups(key: str) -> Generator[str, Any, None]:
         base_key = posixpath.join(BASE_KEY, key)
 
         settings = QgsSettings()
@@ -139,8 +147,5 @@ class GeoVCSSettings:
         groups = settings.childGroups()
 
         for group in groups:
-            QgsMessageLog.logMessage(
-                f"Read: '{group}' from '{key}'", "GeoVCS", Qgis.MessageLevel.Success
-            )
             yield group
         settings.endGroup()
