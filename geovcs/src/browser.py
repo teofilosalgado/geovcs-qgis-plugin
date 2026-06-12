@@ -6,7 +6,6 @@ from qgis.core import (
     Qgis,
     QgsApplication,
     QgsConnectionsRootItem,
-    QgsDataCollectionItem,
     QgsDataItem,
     QgsDataItemProvider,
     QgsLayerItem,
@@ -16,7 +15,7 @@ from qgis.gui import QgsDataItemGuiProvider
 from qgis.PyQt.QtWidgets import QAction, QDialog  # type: ignore
 from qgis.utils import iface
 
-from geovcs.src.constant import PROVIDER_KEY
+from geovcs.src.constant import PROVIDER_KEY, SETTINGS_CONNECTION_KEY
 from geovcs.src.form import (
     GeoVCSDialogConnectionCreate,
     GeoVCSDialogConnectionEdit,
@@ -44,66 +43,20 @@ class GeoVCSLayerItem(QgsLayerItem):
         return False
 
 
-class GeoVCSDataCollectionItem(QgsDataCollectionItem):
-    def __init__(self, parent: QgsDataItem, geovcs_connection: GeoVCSConnection):
-        self.connection: GeoVCSConnection = geovcs_connection
-        super().__init__(
-            parent,
-            f"{self.connection.name} ({self.connection.branch})",
-            posixpath.join(parent.path(), self.connection.name),
-            PROVIDER_KEY,
-        )
-
-    def icon(self):
-        return QgsApplication.getThemeIcon("/mIconConnect.svg")
-
-    def hasChildren(self):
-        return True
-
-    def createChildren(self):  # type: ignore
-        items: list[GeoVCSLayerItem] = []
-
-        datasource = ogr.Open(self.connection.ogr_connection_string)
-        QgsMessageLog.logMessage(
-            f"Connected to GeoVCS {self.connection.name} using '{self.connection.connection_string}'",
-            "GeoVCS",
-            Qgis.MessageLevel.Success,
-        )
-        layer_count = datasource.GetLayerCount()
-        QgsMessageLog.logMessage(
-            f"Found {layer_count} layers in {self.connection.name}",
-            "GeoVCS",
-            Qgis.MessageLevel.Success,
-        )
-
-        for i in range(layer_count):
-            layer: Layer = datasource.GetLayer(i)
-            item = GeoVCSLayerItem(
-                self,
-                GeoVCSLayer(
-                    self.connection,
-                    posixpath.join(self.path(), layer.GetName()),
-                    layer.GetName(),
-                    layer.GetGeometryColumn(),
-                    layer.GetFIDColumn(),
-                    layer.GetGeomType(),
-                ),
-            )
-
-            items.append(item)
-            QgsMessageLog.logMessage(
-                f"Layer '{item.geovcs_layer.name}' of type '{item.geovcs_layer.layer_type.name}' loaded from '{item.geovcs_layer.uri.uri(True)}'",
-                "GeoVCS",
-                Qgis.MessageLevel.Success,
-            )
-        datasource = None
-
-        return items
-
-
 class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
     def __init__(self, parent):
         super().__init__(parent, PROVIDER_KEY, f"/{PROVIDER_KEY}", PROVIDER_KEY)
+        self.connection: GeoVCSConnection | None = None
+        if GeoVCSSettings.key_exists(SETTINGS_CONNECTION_KEY):
+            self.connection = GeoVCSSettings.read_object(
+                SETTINGS_CONNECTION_KEY,
+                GeoVCSConnection,
+            )
+            QgsMessageLog.logMessage(
+                f"Found GeoVCS connection '{self.connection.connection_string}'",
+                "GeoVCS",
+                Qgis.MessageLevel.Success,
+            )
 
     def icon(self):
         return get_logo()
@@ -112,17 +65,19 @@ class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
         return True
 
     def createChildren(self):  # type: ignore
-        items: list[GeoVCSLayerItem] = []
+        if not self.connection:
+            return []
 
+        items: list[GeoVCSLayerItem] = []
         datasource = ogr.Open(self.connection.ogr_connection_string)
         QgsMessageLog.logMessage(
-            f"Connected to GeoVCS {self.connection.name} using '{self.connection.connection_string}'",
+            f"Connected to GeoVCS '{self.connection.connection_string}'",
             "GeoVCS",
             Qgis.MessageLevel.Success,
         )
         layer_count = datasource.GetLayerCount()
         QgsMessageLog.logMessage(
-            f"Found {layer_count} layers in {self.connection.name}",
+            f"Found {layer_count} layers in {self.connection.connection_string}",
             "GeoVCS",
             Qgis.MessageLevel.Success,
         )
@@ -143,7 +98,7 @@ class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
 
             items.append(item)
             QgsMessageLog.logMessage(
-                f"Layer '{item.geovcs_layer.name}' of type '{item.geovcs_layer.layer_type.name}' loaded from '{item.geovcs_layer.uri.uri(True)}'",
+                f"Layer '{item.geovcs_layer.name}' of type '{item.geovcs_layer.layer_type.name}' loaded from '{item.geovcs_layer.uri.uri(True)}'",  # type: ignore
                 "GeoVCS",
                 Qgis.MessageLevel.Success,
             )
@@ -156,7 +111,7 @@ class GeoVCSDataItemProvider(QgsDataItemProvider):
     def name(self):
         return "GeoVCS"
 
-    def capabilities(self):
+    def capabilities(self):  # type: ignore
         return Qgis.DataItemProviderCapability.Databases
 
     def createDataItem(self, path, parentItem):
@@ -212,18 +167,26 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
             return
         item.refresh()
 
-    def _refresh(self, item: GeoVCSDataCollectionItem):
+    def _refresh(self, item: GeoVCSConnectionsRootItem):
         item.refresh()
 
-    def _edit(self, item: GeoVCSDataCollectionItem):
+    def _edit(self, item: GeoVCSConnectionsRootItem):
+        if item.connection is None:
+            item.refresh()
+            return
+
         dialog_edit_connection = GeoVCSDialogConnectionEdit(item.connection)
         if dialog_edit_connection.exec() != QDialog.DialogCode.Accepted:
             return
         item.refresh()
 
-    def _disconnect(self, item: GeoVCSDataCollectionItem):
-        GeoVCSSettings.remove(posixpath.join("connections", item.connection.name))
-        iface.messageBar().pushMessage(
+    def _disconnect(self, item: GeoVCSConnectionsRootItem):
+        if item.connection is None:
+            item.refresh()
+            return
+
+        GeoVCSSettings.remove(SETTINGS_CONNECTION_KEY)
+        iface.messageBar().pushMessage(  # type: ignore
             "GeoVCS - Connection Removed",
             f"Database connection '{item.connection.connection_string}' disconnected successfully.",
             Qgis.MessageLevel.Success,
@@ -232,7 +195,11 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
         if parent:
             parent.refresh()
 
-    def _version_manager(self, item: GeoVCSDataCollectionItem):
+    def _version_manager(self, item: GeoVCSConnectionsRootItem):
+        if item.connection is None:
+            item.refresh()
+            return
+
         dialog_edit_connection = GeoVCSDialogVersionManager(item.connection)
         if dialog_edit_connection.exec() != QDialog.DialogCode.Accepted:
             return

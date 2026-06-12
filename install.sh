@@ -41,11 +41,11 @@ done
 
 # Detect QGIS plugin directory based on OS
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    PLUGIN_DIR="$HOME/.local/share/QGIS/QGIS3/profiles/default/python/plugins"
+    PLUGIN_DIR="$HOME/.local/share/QGIS/QGIS4/profiles/default/python/plugins"
 elif [[ "$OSTYPE" == "darwin"* ]]; then
-    PLUGIN_DIR="$HOME/Library/Application Support/QGIS/QGIS3/profiles/default/python/plugins"
+    PLUGIN_DIR="$HOME/Library/Application Support/QGIS/QGIS4/profiles/default/python/plugins"
 elif [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]]; then
-    PLUGIN_DIR="$APPDATA/QGIS/QGIS3/profiles/default/python/plugins"
+    PLUGIN_DIR="$APPDATA/QGIS/QGIS4/profiles/default/python/plugins"
 else
     echo "Unknown OS type: $OSTYPE"
     echo "Please manually copy the geovcs folder to your QGIS plugins directory."
