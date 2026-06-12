@@ -1,16 +1,14 @@
 import os
-import posixpath
 
 from osgeo import ogr
 from qgis.core import Qgis, QgsMessageLog
 from qgis.gui import QgsAuthSettingsWidget
 from qgis.PyQt import uic
-from qgis.PyQt.QtCore import QRegularExpression
-from qgis.PyQt.QtGui import QIntValidator, QRegularExpressionValidator
+from qgis.PyQt.QtGui import QIntValidator
 from qgis.PyQt.QtWidgets import QDialog, QMessageBox
 from qgis.utils import iface
 
-from geovcs.src.constant import FORM_DIRECTORY_PATH
+from geovcs.src.constant import FORM_DIRECTORY_PATH, SETTINGS_CONNECTION_KEY
 from geovcs.src.model import GeoVCSConnection, GeoVCSSettings
 
 FORM_FILE = os.path.join(FORM_DIRECTORY_PATH, "dialog_connection.ui")
@@ -32,11 +30,6 @@ class GeoVCSDialogConnection(QDialog, FORM_CLASS):
         self.auth_settings = QgsAuthSettingsWidget(self)
         self.v_box_layout.addWidget(self.auth_settings)
 
-        validator_name = QRegularExpressionValidator(
-            QRegularExpression(r"[^/\\]*"), self.edit_name
-        )
-        self.edit_name.setValidator(validator_name)
-
         validator_port = QIntValidator(0, 9999)
         self.edit_port.setValidator(validator_port)
 
@@ -46,15 +39,6 @@ class GeoVCSDialogConnection(QDialog, FORM_CLASS):
         self.button_test.clicked.connect(self.test)
 
     def _validate(self):
-        if not self.edit_name.text().strip():
-            QMessageBox.warning(
-                self,
-                f"{self.windowTitle()} - Validation Error",
-                "Connection name is required.",
-            )
-            self.edit_name.setFocus()
-            return
-
         if not self.edit_host.text().strip():
             QMessageBox.warning(
                 self,
@@ -129,26 +113,24 @@ class GeoVCSDialogConnection(QDialog, FORM_CLASS):
         self.setEnabled(True)
 
         if data:
-            key = posixpath.join("connections", data.name)
-            if GeoVCSSettings.key_exists(key):
-                GeoVCSSettings.write_object(key, data)
+            if GeoVCSSettings.key_exists(SETTINGS_CONNECTION_KEY):
+                GeoVCSSettings.write_object(SETTINGS_CONNECTION_KEY, data)
                 iface.messageBar().pushMessage(
                     "GeoVCS - Connection Updated",
-                    f"Database connection '{data.name}' updated successfully.",
+                    f"Database connection '{data.connection_string}' updated successfully.",
                     Qgis.MessageLevel.Success,
                 )
             else:
-                GeoVCSSettings.write_object(key, data)
+                GeoVCSSettings.write_object(SETTINGS_CONNECTION_KEY, data)
                 iface.messageBar().pushMessage(
                     "GeoVCS - Connection Created",
-                    f"Database connection '{data.name}' created successfully.",
+                    f"Database connection '{data.connection_string}' created successfully.",
                     Qgis.MessageLevel.Success,
                 )
             return super().accept()
 
     def get_data(self) -> GeoVCSConnection:
         return GeoVCSConnection(
-            name=self.edit_name.text().strip(),
             host=self.edit_host.text().strip(),
             port=self.edit_port.text().strip(),
             database=self.edit_database.text().strip(),
@@ -157,7 +139,6 @@ class GeoVCSDialogConnection(QDialog, FORM_CLASS):
         )
 
     def set_data(self, data: GeoVCSConnection):
-        self.edit_name.setText(data.name)
         self.edit_host.setText(data.host)
         self.edit_port.setText(str(data.port))
         self.edit_database.setText(data.database)
@@ -174,5 +155,4 @@ class GeoVCSDialogConnectionEdit(GeoVCSDialogConnection):
     def __init__(self, data: GeoVCSConnection, parent=None):
         super().__init__(parent)
         self.setWindowTitle("GeoVCS - Edit Connection")
-        self.edit_name.setEnabled(False)
         self.set_data(data)

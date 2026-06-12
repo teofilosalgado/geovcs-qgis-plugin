@@ -12,12 +12,11 @@ from qgis.core import (
     QgsSettings,
 )
 
-from geovcs.src.constant import BASE_KEY
+from geovcs.src.constant import SETTINGS_BASE_KEY
 
 
 @dataclass
 class GeoVCSConnection:
-    name: str
     host: str
     port: str
     database: str
@@ -150,7 +149,7 @@ class GeoVCSSettings:
     def key_exists(key: str) -> bool:
         settings = QgsSettings()
 
-        final_key = posixpath.join(BASE_KEY, key)
+        final_key = posixpath.join(SETTINGS_BASE_KEY, key)
         has_value = settings.contains(final_key)
 
         settings.beginGroup(final_key)
@@ -167,7 +166,7 @@ class GeoVCSSettings:
     @staticmethod
     def remove(key: str):
         settings = QgsSettings()
-        final_key = posixpath.join(BASE_KEY, key)
+        final_key = posixpath.join(SETTINGS_BASE_KEY, key)
         settings.remove(final_key)
 
     @staticmethod
@@ -177,13 +176,13 @@ class GeoVCSSettings:
         for attr_name, attr_value in asdict(obj).items():
             if attr_name.startswith("__") or callable(attr_value):
                 continue
-            final_key = posixpath.join(BASE_KEY, key, attr_name)
+            final_key = posixpath.join(SETTINGS_BASE_KEY, key, attr_name)
             settings.setValue(final_key, attr_value)
 
     @staticmethod
     def read_object[T](base_key: str, obj_type: type[T]) -> T:
         settings = QgsSettings()
-        settings.beginGroup(posixpath.join(BASE_KEY, base_key))
+        settings.beginGroup(posixpath.join(SETTINGS_BASE_KEY, base_key))
 
         obj: dict[str, Any] = {}
         for key in settings.childKeys():
@@ -195,7 +194,7 @@ class GeoVCSSettings:
 
     @staticmethod
     def iterate_groups(key: str) -> Generator[str, Any, None]:
-        base_key = posixpath.join(BASE_KEY, key)
+        base_key = posixpath.join(SETTINGS_BASE_KEY, key)
 
         settings = QgsSettings()
         settings.beginGroup(base_key)

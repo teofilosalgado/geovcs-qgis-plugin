@@ -1,7 +1,10 @@
 import os
+import posixpath
 
 PROVIDER_KEY = "GeoVCS"
-BASE_KEY = "plugins/geovcs"
+SETTINGS_BASE_KEY = posixpath.join("plugins", "geovcs")
+SETTINGS_CONNECTION_KEY = "connection"
+
 FORM_DIRECTORY_PATH = os.path.abspath(
     os.path.join((os.path.dirname(__file__)), "..", "asset", "form")
 )
