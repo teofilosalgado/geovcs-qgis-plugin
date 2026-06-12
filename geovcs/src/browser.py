@@ -22,7 +22,7 @@ from geovcs.src.form import (
     GeoVCSDialogVersionManager,
 )
 from geovcs.src.model import GeoVCSConnection, GeoVCSLayer, GeoVCSSettings
-from geovcs.src.util import get_icon
+from geovcs.src.util import get_logo
 
 
 class GeoVCSLayerItem(QgsLayerItem):
@@ -62,7 +62,7 @@ class GeoVCSDataCollectionItem(QgsDataCollectionItem):
     def createChildren(self):
         items: list[GeoVCSLayerItem] = []
 
-        datasource = ogr.Open(self.geovcs_connection.connection_string)
+        datasource = ogr.Open(self.geovcs_connection.ogr_connection_string)
         QgsMessageLog.logMessage(
             f"Connected to GeoVCS {self.geovcs_connection.name} using '{self.geovcs_connection.connection_string}'",
             "GeoVCS",
@@ -103,7 +103,7 @@ class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
         super().__init__(parent, PROVIDER_KEY, f"/{PROVIDER_KEY}", PROVIDER_KEY)
 
     def icon(self):
-        return get_icon("logo.svg")
+        return get_logo()
 
     def hasChildren(self):
         return True

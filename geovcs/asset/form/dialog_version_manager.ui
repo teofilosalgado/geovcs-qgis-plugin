@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>700</width>
-    <height>400</height>
+    <width>800</width>
+    <height>450</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -16,10 +16,10 @@
   <widget class="QTableView" name="table_view">
    <property name="geometry">
     <rect>
-     <x>230</x>
-     <y>30</y>
-     <width>461</width>
-     <height>321</height>
+     <x>320</x>
+     <y>69</y>
+     <width>460</width>
+     <height>331</height>
     </rect>
    </property>
   </widget>
@@ -27,17 +27,23 @@
    <property name="geometry">
     <rect>
      <x>10</x>
-     <y>30</y>
-     <width>200</width>
-     <height>321</height>
+     <y>70</y>
+     <width>290</width>
+     <height>331</height>
     </rect>
+   </property>
+   <property name="verticalScrollBarPolicy">
+    <enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOn</enum>
+   </property>
+   <property name="selectionBehavior">
+    <enum>QAbstractItemView::SelectionBehavior::SelectItems</enum>
    </property>
   </widget>
   <widget class="QLabel" name="label_branches">
    <property name="geometry">
     <rect>
      <x>10</x>
-     <y>10</y>
+     <y>50</y>
      <width>60</width>
      <height>16</height>
     </rect>
@@ -56,8 +62,8 @@
    <property name="geometry">
     <rect>
      <x>10</x>
-     <y>360</y>
-     <width>201</width>
+     <y>410</y>
+     <width>291</width>
      <height>26</height>
     </rect>
    </property>
@@ -68,8 +74,8 @@
   <widget class="QDialogButtonBox" name="dialog_button_box">
    <property name="geometry">
     <rect>
-     <x>520</x>
-     <y>360</y>
+     <x>610</x>
+     <y>410</y>
      <width>168</width>
      <height>26</height>
     </rect>
@@ -90,8 +96,8 @@
   <widget class="QLabel" name="label_commits">
    <property name="geometry">
     <rect>
-     <x>230</x>
-     <y>10</y>
+     <x>320</x>
+     <y>50</y>
      <width>60</width>
      <height>16</height>
     </rect>
@@ -109,13 +115,13 @@
   <widget class="QWidget" name="horizontalLayoutWidget">
    <property name="geometry">
     <rect>
-     <x>230</x>
-     <y>360</y>
-     <width>281</width>
+     <x>10</x>
+     <y>10</y>
+     <width>291</width>
      <height>31</height>
     </rect>
    </property>
-   <layout class="QHBoxLayout" name="horizontal_layout">
+   <layout class="QHBoxLayout" name="horizontal_layout_branch">
     <item>
      <widget class="QLabel" name="label_current_branch">
       <property name="sizePolicy">
@@ -131,6 +137,41 @@
     </item>
     <item>
      <widget class="QComboBox" name="combo_box_branch">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QWidget" name="horizontalLayoutWidget_2">
+   <property name="geometry">
+    <rect>
+     <x>320</x>
+     <y>10</y>
+     <width>461</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <layout class="QHBoxLayout" name="horizontal_layout_commit">
+    <item>
+     <widget class="QLabel" name="label_current_commit">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="text">
+       <string>Current commit:</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QComboBox" name="combo_box_commit">
       <property name="sizePolicy">
        <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
         <horstretch>0</horstretch>

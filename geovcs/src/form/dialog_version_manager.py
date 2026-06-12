@@ -1,14 +1,12 @@
 import os
 
 from qgis.PyQt import uic
-from qgis.PyQt.QtWidgets import (
-    QDialog,
-)
+from qgis.PyQt.QtWidgets import QDialog
 
 from geovcs.src.constant import FORM_DIRECTORY_PATH
 from geovcs.src.model import GeoVCSConnection
 
-FORM_FILE = os.path.join(FORM_DIRECTORY_PATH, "version_manager.ui")
+FORM_FILE = os.path.join(FORM_DIRECTORY_PATH, "dialog_version_manager.ui")
 
 FORM_CLASS, _ = uic.loadUiType(FORM_FILE)
 

@@ -6,11 +6,11 @@ from qgis.core import (
     Qgis,
     QgsMessageLog,
 )
+from qgis.gui import QgsAuthSettingsWidget
 from qgis.PyQt import uic
-from qgis.PyQt.QtWidgets import (
-    QDialog,
-    QMessageBox,
-)
+from qgis.PyQt.QtCore import QRegularExpression
+from qgis.PyQt.QtGui import QIntValidator, QRegularExpressionValidator
+from qgis.PyQt.QtWidgets import QDialog, QMessageBox
 from qgis.utils import iface
 
 from geovcs.src.constant import FORM_DIRECTORY_PATH
@@ -31,6 +31,17 @@ class GeoVCSDialogConnection(QDialog, FORM_CLASS):
             "GeoVCS",
             Qgis.MessageLevel.Success,
         )
+
+        self.auth_settings = QgsAuthSettingsWidget(self)
+        self.v_box_layout.addWidget(self.auth_settings)
+
+        validator_name = QRegularExpressionValidator(
+            QRegularExpression(r"[^/\\]*"), self.edit_name
+        )
+        self.edit_name.setValidator(validator_name)
+
+        validator_port = QIntValidator(0, 9999)
+        self.edit_port.setValidator(validator_port)
 
         self.dialog_button_box.accepted.connect(self.accept)
         self.dialog_button_box.rejected.connect(self.reject)
@@ -74,23 +85,17 @@ class GeoVCSDialogConnection(QDialog, FORM_CLASS):
             self.edit_database.setFocus()
             return
 
-        if not self.edit_username.text().strip():
+        if not self.auth_settings.configId():
             QMessageBox.warning(
                 self,
                 f"{self.windowTitle()} - Validation Error",
-                "Username is required.",
+                "Credentials are required.",
             )
-            self.edit_username.setFocus()
-            return
-
-        if not self.edit_password.text():
-            QMessageBox.warning(self, "Validation Error", "Password is required.")
-            self.edit_password.setFocus()
             return
 
         data = self.get_data()
         try:
-            datasource = ogr.Open(data.connection_string)
+            datasource = ogr.Open(data.ogr_connection_string)
             if datasource is None:
                 QMessageBox.critical(
                     self,
@@ -150,8 +155,7 @@ class GeoVCSDialogConnection(QDialog, FORM_CLASS):
             host=self.edit_host.text().strip(),
             port=int(self.edit_port.text().strip()),
             database=self.edit_database.text().strip(),
-            username=self.edit_username.text().strip(),
-            password=self.edit_password.text(),
+            auth_config_id=self.auth_settings.configId(),
             branch="main",
         )
 
@@ -160,8 +164,7 @@ class GeoVCSDialogConnection(QDialog, FORM_CLASS):
         self.edit_host.setText(data.host)
         self.edit_port.setText(str(data.port))
         self.edit_database.setText(data.database)
-        self.edit_username.setText(data.username)
-        self.edit_password.setText(data.password)
+        self.auth_settings.setConfigId(data.auth_config_id)
 
 
 class GeoVCSDialogConnectionCreate(GeoVCSDialogConnection):

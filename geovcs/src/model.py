@@ -1,10 +1,10 @@
 import posixpath
-import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from functools import cached_property
 from typing import Any, Generator
 
 from osgeo import ogr
-from qgis.core import Qgis, QgsSettings
+from qgis.core import Qgis, QgsApplication, QgsAuthMethodConfig, QgsSettings
 
 from geovcs.src.constant import BASE_KEY
 
@@ -16,14 +16,59 @@ class GeoVCSConnection:
     port: int
     database: str
     branch: str
-    username: str
-    password: str
+    auth_config_id: str
 
-    @property
+    @cached_property
     def connection_string(self) -> str:
         value = (
             f"MySQL:{self.database}/{self.branch},"
             f"host={self.host},"
+            f"port={self.port} "
+            f"authcfg={self.auth_config_id}"
+        )
+        return value
+
+    @cached_property
+    def username(self) -> str | None:
+        auth_manager = QgsApplication.authManager()
+        if not auth_manager:
+            return None
+
+        auth_method_config = QgsAuthMethodConfig()
+        if auth_manager.loadAuthenticationConfig(
+            self.auth_config_id, auth_method_config, True
+        ):
+            config_map = auth_method_config.configMap()
+            username = config_map.get("username", "")
+            return username
+        else:
+            return None
+
+    @cached_property
+    def password(self) -> str | None:
+        auth_manager = QgsApplication.authManager()
+        if not auth_manager:
+            return None
+
+        auth_method_config = QgsAuthMethodConfig()
+        if auth_manager.loadAuthenticationConfig(
+            self.auth_config_id, auth_method_config, True
+        ):
+            config_map = auth_method_config.configMap()
+            password = config_map.get("password", "")
+            return password
+        else:
+            return None
+
+    @cached_property
+    def ogr_connection_string(self) -> str | None:
+        if self.username is None or self.password is None:
+            return None
+
+        value = (
+            f"MySQL:{self.database}/{self.branch},"
+            f"host={self.host},"
+            f"port={self.port} "
             f"port={self.port},"
             f"user={self.username},"
             f"password={self.password}"
@@ -38,7 +83,6 @@ class GeoVCSLayer:
         path: str,
         ogr_layer_type,
         geovcs_connection: GeoVCSConnection,
-        branch: str = "main",
     ):
         self.name: str = name
         self.path: str = path
@@ -47,17 +91,7 @@ class GeoVCSLayer:
         )
         self.geovcs_connection: GeoVCSConnection = geovcs_connection
         self.provider_key: str = "ogr"
-        self.branch: str = branch
-
-    @property
-    def uri(self) -> str:
-        connection_string = re.sub(
-            r"^MySQL:(\w+),",
-            rf"MySQL:\1/{self.branch},",
-            self.geovcs_connection.connection_string,
-        )
-        uri = f"{connection_string},tables={self.name}"
-        return uri
+        self.uri = f"{self.geovcs_connection.connection_string}|layername={self.name}"
 
     def _ogr_geometry_type_to_qgis_browser_layer_type(
         self,
@@ -119,7 +153,7 @@ class GeoVCSSettings:
     def write_object(key: str, obj):
         settings = QgsSettings()
 
-        for attr_name, attr_value in vars(obj).items():
+        for attr_name, attr_value in asdict(obj).items():
             if attr_name.startswith("__") or callable(attr_value):
                 continue
             final_key = posixpath.join(BASE_KEY, key, attr_name)
