@@ -4,7 +4,13 @@ from functools import cached_property
 from typing import Any, Generator
 
 from osgeo import ogr
-from qgis.core import Qgis, QgsApplication, QgsAuthMethodConfig, QgsSettings
+from qgis.core import (
+    Qgis,
+    QgsApplication,
+    QgsAuthMethodConfig,
+    QgsDataSourceUri,
+    QgsSettings,
+)
 
 from geovcs.src.constant import BASE_KEY
 
@@ -13,7 +19,7 @@ from geovcs.src.constant import BASE_KEY
 class GeoVCSConnection:
     name: str
     host: str
-    port: int
+    port: str
     database: str
     branch: str
     auth_config_id: str
@@ -68,7 +74,6 @@ class GeoVCSConnection:
         value = (
             f"MySQL:{self.database}/{self.branch},"
             f"host={self.host},"
-            f"port={self.port} "
             f"port={self.port},"
             f"user={self.username},"
             f"password={self.password}"
@@ -79,19 +84,35 @@ class GeoVCSConnection:
 class GeoVCSLayer:
     def __init__(
         self,
-        name: str,
+        connection: GeoVCSConnection,
         path: str,
+        name: str,
+        geometry_column: str,
+        key_column: str,
         ogr_layer_type,
-        geovcs_connection: GeoVCSConnection,
     ):
-        self.name: str = name
+        self.geovcs_connection: GeoVCSConnection = connection
         self.path: str = path
+        self.name: str = name
+        self.geometry_column: str = geometry_column
+        self.key_column: str = key_column
+
         self.layer_type: Qgis.BrowserLayerType = (
             self._ogr_geometry_type_to_qgis_browser_layer_type(ogr_layer_type)
         )
-        self.geovcs_connection: GeoVCSConnection = geovcs_connection
+
         self.provider_key: str = "ogr"
-        self.uri = f"{self.geovcs_connection.connection_string}|layername={self.name}"
+
+        self.uri = QgsDataSourceUri()
+        self.uri.setConnection(
+            self.geovcs_connection.host,
+            self.geovcs_connection.port,
+            f"{self.geovcs_connection.database}/{self.geovcs_connection.branch}",
+            "",
+            "",
+        )
+        self.uri.setAuthConfigId(self.geovcs_connection.auth_config_id)
+        self.uri.setDataSource("", self.name, self.geometry_column, "", self.key_column)
 
     def _ogr_geometry_type_to_qgis_browser_layer_type(
         self,

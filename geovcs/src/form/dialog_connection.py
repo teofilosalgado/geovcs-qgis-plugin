@@ -2,10 +2,7 @@ import os
 import posixpath
 
 from osgeo import ogr
-from qgis.core import (
-    Qgis,
-    QgsMessageLog,
-)
+from qgis.core import Qgis, QgsMessageLog
 from qgis.gui import QgsAuthSettingsWidget
 from qgis.PyQt import uic
 from qgis.PyQt.QtCore import QRegularExpression
@@ -153,7 +150,7 @@ class GeoVCSDialogConnection(QDialog, FORM_CLASS):
         return GeoVCSConnection(
             name=self.edit_name.text().strip(),
             host=self.edit_host.text().strip(),
-            port=int(self.edit_port.text().strip()),
+            port=self.edit_port.text().strip(),
             database=self.edit_database.text().strip(),
             auth_config_id=self.auth_settings.configId(),
             branch="main",

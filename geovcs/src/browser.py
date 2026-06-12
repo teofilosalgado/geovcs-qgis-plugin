@@ -1,6 +1,7 @@
 import posixpath
 
 from osgeo import ogr
+from osgeo.ogr import Layer
 from qgis.core import (
     Qgis,
     QgsApplication,
@@ -12,7 +13,7 @@ from qgis.core import (
     QgsMessageLog,
 )
 from qgis.gui import QgsDataItemGuiProvider
-from qgis.PyQt.QtWidgets import QAction, QDialog
+from qgis.PyQt.QtWidgets import QAction, QDialog  # type: ignore
 from qgis.utils import iface
 
 from geovcs.src.constant import PROVIDER_KEY
@@ -32,7 +33,7 @@ class GeoVCSLayerItem(QgsLayerItem):
             parent,
             geovcs_layer.name,
             geovcs_layer.path,
-            geovcs_layer.uri,
+            geovcs_layer.uri.uri(False),
             geovcs_layer.layer_type,
             geovcs_layer.provider_key,
         )
@@ -45,11 +46,11 @@ class GeoVCSLayerItem(QgsLayerItem):
 
 class GeoVCSDataCollectionItem(QgsDataCollectionItem):
     def __init__(self, parent: QgsDataItem, geovcs_connection: GeoVCSConnection):
-        self.geovcs_connection: GeoVCSConnection = geovcs_connection
+        self.connection: GeoVCSConnection = geovcs_connection
         super().__init__(
             parent,
-            f"{self.geovcs_connection.name} ({self.geovcs_connection.branch})",
-            posixpath.join(parent.path(), self.geovcs_connection.name),
+            f"{self.connection.name} ({self.connection.branch})",
+            posixpath.join(parent.path(), self.connection.name),
             PROVIDER_KEY,
         )
 
@@ -59,37 +60,39 @@ class GeoVCSDataCollectionItem(QgsDataCollectionItem):
     def hasChildren(self):
         return True
 
-    def createChildren(self):
+    def createChildren(self):  # type: ignore
         items: list[GeoVCSLayerItem] = []
 
-        datasource = ogr.Open(self.geovcs_connection.ogr_connection_string)
+        datasource = ogr.Open(self.connection.ogr_connection_string)
         QgsMessageLog.logMessage(
-            f"Connected to GeoVCS {self.geovcs_connection.name} using '{self.geovcs_connection.connection_string}'",
+            f"Connected to GeoVCS {self.connection.name} using '{self.connection.connection_string}'",
             "GeoVCS",
             Qgis.MessageLevel.Success,
         )
         layer_count = datasource.GetLayerCount()
         QgsMessageLog.logMessage(
-            f"Found {layer_count} layers in {self.geovcs_connection.name}",
+            f"Found {layer_count} layers in {self.connection.name}",
             "GeoVCS",
             Qgis.MessageLevel.Success,
         )
 
         for i in range(layer_count):
-            layer = datasource.GetLayer(i)
+            layer: Layer = datasource.GetLayer(i)
             item = GeoVCSLayerItem(
                 self,
                 GeoVCSLayer(
-                    layer.GetName(),
+                    self.connection,
                     posixpath.join(self.path(), layer.GetName()),
+                    layer.GetName(),
+                    layer.GetGeometryColumn(),
+                    layer.GetFIDColumn(),
                     layer.GetGeomType(),
-                    self.geovcs_connection,
                 ),
             )
 
             items.append(item)
             QgsMessageLog.logMessage(
-                f"Layer '{item.geovcs_layer.name}' of type '{item.geovcs_layer.layer_type.name}' loaded from '{item.geovcs_layer.uri}'",
+                f"Layer '{item.geovcs_layer.name}' of type '{item.geovcs_layer.layer_type.name}' loaded from '{item.geovcs_layer.uri.uri(True)}'",
                 "GeoVCS",
                 Qgis.MessageLevel.Success,
             )
@@ -108,7 +111,7 @@ class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
     def hasChildren(self):
         return True
 
-    def createChildren(self):
+    def createChildren(self):  # type: ignore
         items: list[GeoVCSDataCollectionItem] = []
         for group in GeoVCSSettings.iterate_groups("connections"):
             connection = GeoVCSSettings.read_object(
@@ -202,24 +205,22 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
         item.refresh()
 
     def _edit_connection(self, item: GeoVCSDataCollectionItem):
-        dialog_edit_connection = GeoVCSDialogConnectionEdit(item.geovcs_connection)
+        dialog_edit_connection = GeoVCSDialogConnectionEdit(item.connection)
         if dialog_edit_connection.exec() != QDialog.DialogCode.Accepted:
             return
         item.refresh()
 
     def _version_manager(self, item: GeoVCSDataCollectionItem):
-        dialog_edit_connection = GeoVCSDialogVersionManager(item.geovcs_connection)
+        dialog_edit_connection = GeoVCSDialogVersionManager(item.connection)
         if dialog_edit_connection.exec() != QDialog.DialogCode.Accepted:
             return
         item.refresh()
 
     def _remove_connection(self, item: GeoVCSDataCollectionItem):
-        GeoVCSSettings.remove(
-            posixpath.join("connections", item.geovcs_connection.name)
-        )
+        GeoVCSSettings.remove(posixpath.join("connections", item.connection.name))
         iface.messageBar().pushMessage(
             "GeoVCS - Connection Removed",
-            f"Database connection '{item.geovcs_connection.name}' removed successfully.",
+            f"Database connection '{item.connection.name}' removed successfully.",
             Qgis.MessageLevel.Success,
         )
         parent = item.parent()
