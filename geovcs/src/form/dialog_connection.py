@@ -66,6 +66,15 @@ class GeoVCSDialogConnection(QDialog, FORM_CLASS):
             self.edit_database.setFocus()
             return
 
+        if not self.edit_branch.text().strip():
+            QMessageBox.warning(
+                self,
+                f"{self.windowTitle()} - Validation Error",
+                "Branch name is required.",
+            )
+            self.edit_branch.setFocus()
+            return
+
         if not self.auth_settings.configId():
             QMessageBox.warning(
                 self,
@@ -101,7 +110,7 @@ class GeoVCSDialogConnection(QDialog, FORM_CLASS):
         self.setEnabled(True)
 
         if data:
-            iface.messageBar().pushMessage(
+            iface.messageBar().pushMessage(  # type: ignore
                 "GeoVCS - Connection Established",
                 f"Database connection with instance '{data.host}:{data.port}' established successfully.",
                 Qgis.MessageLevel.Success,
@@ -115,14 +124,14 @@ class GeoVCSDialogConnection(QDialog, FORM_CLASS):
         if data:
             if GeoVCSSettings.key_exists(SETTINGS_CONNECTION_KEY):
                 GeoVCSSettings.write_object(SETTINGS_CONNECTION_KEY, data)
-                iface.messageBar().pushMessage(
+                iface.messageBar().pushMessage(  # type: ignore
                     "GeoVCS - Connection Updated",
                     f"Database connection '{data.connection_string}' updated successfully.",
                     Qgis.MessageLevel.Success,
                 )
             else:
                 GeoVCSSettings.write_object(SETTINGS_CONNECTION_KEY, data)
-                iface.messageBar().pushMessage(
+                iface.messageBar().pushMessage(  # type: ignore
                     "GeoVCS - Connection Created",
                     f"Database connection '{data.connection_string}' created successfully.",
                     Qgis.MessageLevel.Success,
@@ -134,14 +143,15 @@ class GeoVCSDialogConnection(QDialog, FORM_CLASS):
             host=self.edit_host.text().strip(),
             port=self.edit_port.text().strip(),
             database=self.edit_database.text().strip(),
+            branch=self.edit_branch.text().strip(),
             auth_config_id=self.auth_settings.configId(),
-            branch="main",
         )
 
     def set_data(self, data: GeoVCSConnection):
         self.edit_host.setText(data.host)
-        self.edit_port.setText(str(data.port))
+        self.edit_port.setText(data.port)
         self.edit_database.setText(data.database)
+        self.edit_branch.setText(data.branch)
         self.auth_settings.setConfigId(data.auth_config_id)
 
 
@@ -149,6 +159,7 @@ class GeoVCSDialogConnectionCreate(GeoVCSDialogConnection):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("GeoVCS - Create Connection")
+        self.edit_branch.setText("main")
 
 
 class GeoVCSDialogConnectionEdit(GeoVCSDialogConnection):

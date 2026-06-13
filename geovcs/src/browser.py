@@ -32,7 +32,7 @@ class GeoVCSLayerItem(QgsLayerItem):
             parent,
             geovcs_layer.name,
             geovcs_layer.path,
-            geovcs_layer.uri.uri(False),
+            geovcs_layer.uri,
             geovcs_layer.layer_type,
             geovcs_layer.provider_key,
         )
@@ -46,28 +46,56 @@ class GeoVCSLayerItem(QgsLayerItem):
 class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
     def __init__(self, parent):
         super().__init__(parent, PROVIDER_KEY, f"/{PROVIDER_KEY}", PROVIDER_KEY)
+        QgsMessageLog.logMessage(
+            "__init__'",
+            "GeoVCS",
+            Qgis.MessageLevel.Success,
+        )
+
+        self.setCapabilitiesV2(Qgis.BrowserItemCapability.Fertile)
         self.connection: GeoVCSConnection | None = None
+        self._update_connection()
+
+    def _update_connection(self):
         if GeoVCSSettings.key_exists(SETTINGS_CONNECTION_KEY):
+            self.setState(Qgis.BrowserItemState.NotPopulated)
             self.connection = GeoVCSSettings.read_object(
                 SETTINGS_CONNECTION_KEY,
                 GeoVCSConnection,
+            )
+            self.setName(
+                f"GeoVCS at {self.connection.database}/{self.connection.branch}"
             )
             QgsMessageLog.logMessage(
                 f"Found GeoVCS connection '{self.connection.connection_string}'",
                 "GeoVCS",
                 Qgis.MessageLevel.Success,
             )
+        else:
+            self.connection = None
+            self.setName("GeoVCS")
+            self.setState(Qgis.BrowserItemState.Populated)
 
     def icon(self):
         return get_logo()
 
     def hasChildren(self):
-        return True
+        return self.connection is not None
 
-    def createChildren(self):  # type: ignore
+    def refresh(self, children: list[QgsDataItem] = []) -> None:
+        return super().refresh()
+
+    def depopulate(self) -> None:
+        return super().depopulate()
+
+    def createChildren(self) -> list[GeoVCSLayerItem]:  # type: ignore
+        self._update_connection()
+
         if not self.connection:
+            self.setState(Qgis.BrowserItemState.Populated)
             return []
 
+        self.setState(Qgis.BrowserItemState.Populating)
         items: list[GeoVCSLayerItem] = []
         datasource = ogr.Open(self.connection.ogr_connection_string)
         QgsMessageLog.logMessage(
@@ -98,12 +126,13 @@ class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
 
             items.append(item)
             QgsMessageLog.logMessage(
-                f"Layer '{item.geovcs_layer.name}' of type '{item.geovcs_layer.layer_type.name}' loaded from '{item.geovcs_layer.uri.uri(True)}'",  # type: ignore
+                f"Layer '{item.geovcs_layer.name}' of type '{item.geovcs_layer.layer_type.name}' loaded from '{item.geovcs_layer.uri}'",  # type: ignore
                 "GeoVCS",
                 Qgis.MessageLevel.Success,
             )
         datasource = None
 
+        self.setState(Qgis.BrowserItemState.Populated)
         return items
 
 
@@ -136,6 +165,9 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
             )
             action_connect.triggered.connect(lambda: self._connect(item))
             menu.addAction(action_connect)
+
+            if not GeoVCSSettings.key_exists(SETTINGS_CONNECTION_KEY):
+                return
 
             action_edit = QAction(
                 QgsApplication.getThemeIcon("/mActionToggleEditing.svg"),
@@ -182,7 +214,6 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
 
     def _disconnect(self, item: GeoVCSConnectionsRootItem):
         if item.connection is None:
-            item.refresh()
             return
 
         GeoVCSSettings.remove(SETTINGS_CONNECTION_KEY)
@@ -191,9 +222,8 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
             f"Database connection '{item.connection.connection_string}' disconnected successfully.",
             Qgis.MessageLevel.Success,
         )
-        parent = item.parent()
-        if parent:
-            parent.refresh()
+        item.depopulate()
+        item.refresh()
 
     def _version_manager(self, item: GeoVCSConnectionsRootItem):
         if item.connection is None:

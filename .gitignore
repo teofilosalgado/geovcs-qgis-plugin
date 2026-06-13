@@ -105,9 +105,5 @@ ENV/
 # mypy
 .mypy_cache/
 
-# IDE settings
-.vscode/
-.idea/
-
 tests/test_testings.py
 docs/changelog_update.py

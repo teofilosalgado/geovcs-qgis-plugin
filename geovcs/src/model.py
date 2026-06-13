@@ -8,7 +8,6 @@ from qgis.core import (
     Qgis,
     QgsApplication,
     QgsAuthMethodConfig,
-    QgsDataSourceUri,
     QgsSettings,
 )
 
@@ -90,7 +89,7 @@ class GeoVCSLayer:
         key_column: str,
         ogr_layer_type,
     ):
-        self.geovcs_connection: GeoVCSConnection = connection
+        self.connection: GeoVCSConnection = connection
         self.path: str = path
         self.name: str = name
         self.geometry_column: str = geometry_column
@@ -102,16 +101,13 @@ class GeoVCSLayer:
 
         self.provider_key: str = "ogr"
 
-        self.uri = QgsDataSourceUri()
-        self.uri.setConnection(
-            self.geovcs_connection.host,
-            self.geovcs_connection.port,
-            f"{self.geovcs_connection.database}/{self.geovcs_connection.branch}",
-            "",
-            "",
+        self.uri = (
+            f"MySQL:{self.connection.database}/{self.connection.branch},"
+            f"host={self.connection.host},"
+            f"port={self.connection.port},"
+            f"user={self.connection.username},"
+            f"password={self.connection.password}"
         )
-        self.uri.setAuthConfigId(self.geovcs_connection.auth_config_id)
-        self.uri.setDataSource("", self.name, self.geometry_column, "", self.key_column)
 
     def _ogr_geometry_type_to_qgis_browser_layer_type(
         self,
@@ -168,6 +164,7 @@ class GeoVCSSettings:
         settings = QgsSettings()
         final_key = posixpath.join(SETTINGS_BASE_KEY, key)
         settings.remove(final_key)
+        settings.sync()
 
     @staticmethod
     def write_object(key: str, obj):
@@ -178,6 +175,7 @@ class GeoVCSSettings:
                 continue
             final_key = posixpath.join(SETTINGS_BASE_KEY, key, attr_name)
             settings.setValue(final_key, attr_value)
+        settings.sync()
 
     @staticmethod
     def read_object[T](base_key: str, obj_type: type[T]) -> T:
