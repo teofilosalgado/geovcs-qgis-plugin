@@ -105,8 +105,8 @@ class GeoVCSLayer:
             f"MySQL:{self.connection.database}/{self.connection.branch},"
             f"host={self.connection.host},"
             f"port={self.connection.port},"
-            f"user={self.connection.username},"
-            f"password={self.connection.password}"
+            f"user={self.connection.username}"
+            # f"password={self.connection.password}"
         )
 
     def _ogr_geometry_type_to_qgis_browser_layer_type(
