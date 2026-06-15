@@ -1,11 +1,11 @@
-from qgis.core import Qgis, QgsApplication, QgsMessageLog
+from qgis.core import QgsApplication
 from qgis.gui import QgisInterface, QgsGui
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import QToolBar
 
 from geovcs.src.browser import GeoVCSDataItemGuiProvider, GeoVCSDataItemProvider
-from geovcs.src.constant import VERSION
 from geovcs.src.form.dock_version_manager import GeoVCSDockVersionManagerDock
+from geovcs.src.model import GeoVCSConnectionManager
 from geovcs.src.util import get_logo
 
 
@@ -20,27 +20,17 @@ class GeoVCS:
         self.dock_version_manager: GeoVCSDockVersionManagerDock | None = None
 
     def initGui(self):
-        QgsMessageLog.logMessage(
-            f"Initializing GeoVCS {VERSION}",
-            "GeoVCS",
-            Qgis.MessageLevel.Success,
-        )
-
-        data_item_provider_registry = QgsApplication.dataItemProviderRegistry()
-        data_item_gui_provider_registry = QgsGui.dataItemGuiProviderRegistry()
-        plugin_menu = self.iface.pluginMenu()
+        GeoVCSConnectionManager()
 
         self.toolbar = self.iface.addToolBar("GeoVCS")
         if self.toolbar:
             self.toolbar.setObjectName("GeoVCS")
 
         self.data_item_provider = GeoVCSDataItemProvider()
-        if self.data_item_gui_provider and data_item_provider_registry:
-            data_item_provider_registry.addProvider(self.data_item_provider)
+        QgsApplication.dataItemProviderRegistry().addProvider(self.data_item_provider)  # type: ignore
 
         self.data_item_gui_provider = GeoVCSDataItemGuiProvider()
-        if self.data_item_gui_provider and data_item_gui_provider_registry:
-            data_item_gui_provider_registry.addProvider(self.data_item_gui_provider)
+        QgsGui.dataItemGuiProviderRegistry().addProvider(self.data_item_gui_provider)  # type: ignore
 
         self.dock_version_manager = GeoVCSDockVersionManagerDock()
         self.dock_version_manager.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea)
@@ -57,6 +47,7 @@ class GeoVCS:
             self.toolbar.addAction(self.action_show_dock)
 
         self.iface.addPluginToMenu("&GeoVCS", self.action_show_dock)
+        plugin_menu = self.iface.pluginMenu()
         if plugin_menu:
             for action in plugin_menu.actions():
                 if action.text() != "&GeoVCS":

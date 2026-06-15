@@ -242,6 +242,8 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
                 Qgis.MessageLevel.Success,
             )
         GeoVCSSettings.write_object(SETTINGS_CONNECTION_KEY, self._connection)
+        if self._connection.password is not None:
+            os.environ["MYSQL_PWD"] = self._connection.password
 
     def disconnect(self):
         if self._connection:
@@ -252,6 +254,7 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
             )
             self._connection = None
             GeoVCSSettings.remove(SETTINGS_CONNECTION_KEY)
+            os.environ.pop("MYSQL_PWD", None)
 
     def is_connected(self) -> bool:
         return self._connection is not None

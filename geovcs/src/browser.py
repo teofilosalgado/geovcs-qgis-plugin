@@ -20,7 +20,6 @@ from geovcs.src.form import (
     GeoVCSDialogVersionManager,
 )
 from geovcs.src.model import (
-    GeoVCSConnection,
     GeoVCSConnectionManager,
     GeoVCSLayer,
 )
@@ -55,16 +54,14 @@ class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
         )
 
         self.setCapabilitiesV2(Qgis.BrowserItemCapability.Fertile)
-        self.connection: GeoVCSConnection | None = None
-        self._update_connection()
+        self._update_name()
 
-    def _update_connection(self):
-        self.connection = GeoVCSConnectionManager().connection
-
-        if self.connection:
+    def _update_name(self):
+        connection = GeoVCSConnectionManager().connection
+        if connection:
             self.setState(Qgis.BrowserItemState.NotPopulated)
             self.setName(
-                f"GeoVCS at {self.connection.database}/{self.connection.branch}"
+                f"GeoVCS at {connection.username}@{connection.database}/{connection.branch}"
             )
         else:
             self.connection = None
@@ -84,23 +81,24 @@ class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
         return super().depopulate()
 
     def createChildren(self) -> list[GeoVCSLayerItem]:  # type: ignore
-        self._update_connection()
+        self._update_name()
 
-        if not self.connection:
+        connection = GeoVCSConnectionManager().connection
+        if not connection:
             self.setState(Qgis.BrowserItemState.Populated)
             return []
 
         self.setState(Qgis.BrowserItemState.Populating)
         items: list[GeoVCSLayerItem] = []
-        datasource = ogr.Open(self.connection.ogr_connection_string)
+        datasource = ogr.Open(connection.ogr_connection_string)
         QgsMessageLog.logMessage(
-            f"Connected to GeoVCS '{self.connection.connection_string}'",
+            f"Connected to GeoVCS '{connection.connection_string}'",
             "GeoVCS",
             Qgis.MessageLevel.Success,
         )
         layer_count = datasource.GetLayerCount()
         QgsMessageLog.logMessage(
-            f"Found {layer_count} layers in {self.connection.connection_string}",
+            f"Found {layer_count} layers in {connection.connection_string}",
             "GeoVCS",
             Qgis.MessageLevel.Success,
         )
@@ -110,7 +108,7 @@ class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
             item = GeoVCSLayerItem(
                 self,
                 GeoVCSLayer(
-                    self.connection,
+                    connection,
                     posixpath.join(self.path(), layer.GetName()),
                     layer.GetName(),
                     layer.GetGeometryColumn(),
@@ -153,40 +151,39 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
             return
 
         if isinstance(item, GeoVCSConnectionsRootItem):
-            action_connect = QAction(
-                QgsApplication.getThemeIcon("/repositoryConnected.svg"),
-                "Connect...",
-                menu,
-            )
-            action_connect.triggered.connect(lambda: self._connect(item))
-            menu.addAction(action_connect)
-
             if not GeoVCSConnectionManager().is_connected():
-                return
+                action_connect = QAction(
+                    QgsApplication.getThemeIcon("/repositoryConnected.svg"),
+                    "Connect...",
+                    menu,
+                )
+                action_connect.triggered.connect(lambda: self._connect(item))
+                menu.addAction(action_connect)
 
-            action_edit = QAction(
-                QgsApplication.getThemeIcon("/mActionToggleEditing.svg"),
-                "Edit connection...",
-                menu,
-            )
-            action_edit.triggered.connect(lambda: self._connect(item))
-            menu.addAction(action_edit)
+            if GeoVCSConnectionManager().is_connected():
+                action_edit = QAction(
+                    QgsApplication.getThemeIcon("/mActionToggleEditing.svg"),
+                    "Edit...",
+                    menu,
+                )
+                action_edit.triggered.connect(lambda: self._connect(item))
+                menu.addAction(action_edit)
 
-            action_refresh = QAction(
-                QgsApplication.getThemeIcon("/mActionRefresh.svg"),
-                "Refresh",
-                menu,
-            )
-            action_refresh.triggered.connect(lambda: self._refresh(item))
-            menu.addAction(action_refresh)
+                action_refresh = QAction(
+                    QgsApplication.getThemeIcon("/mActionRefresh.svg"),
+                    "Refresh",
+                    menu,
+                )
+                action_refresh.triggered.connect(lambda: self._refresh(item))
+                menu.addAction(action_refresh)
 
-            action_disconnect = QAction(
-                QgsApplication.getThemeIcon("/mActionRemove.svg"),
-                "Remove connection",
-                menu,
-            )
-            action_disconnect.triggered.connect(lambda: self._disconnect(item))
-            menu.addAction(action_disconnect)
+                action_disconnect = QAction(
+                    QgsApplication.getThemeIcon("/mActionRemove.svg"),
+                    "Disconnect",
+                    menu,
+                )
+                action_disconnect.triggered.connect(lambda: self._disconnect(item))
+                menu.addAction(action_disconnect)
 
     def _refresh(self, item: GeoVCSConnectionsRootItem):
         item.refresh()
