@@ -13,15 +13,17 @@ from qgis.core import (
 )
 from qgis.gui import QgsDataItemGuiProvider
 from qgis.PyQt.QtWidgets import QAction, QDialog  # type: ignore
-from qgis.utils import iface
 
-from geovcs.src.constant import PROVIDER_KEY, SETTINGS_CONNECTION_KEY
+from geovcs.src.constant import PROVIDER_KEY
 from geovcs.src.form import (
     GeoVCSDialogConnectionCreate,
-    GeoVCSDialogConnectionEdit,
     GeoVCSDialogVersionManager,
 )
-from geovcs.src.model import GeoVCSConnection, GeoVCSLayer, GeoVCSSettings
+from geovcs.src.model import (
+    GeoVCSConnection,
+    GeoVCSConnectionManager,
+    GeoVCSLayer,
+)
 from geovcs.src.util import get_logo
 
 
@@ -57,19 +59,12 @@ class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
         self._update_connection()
 
     def _update_connection(self):
-        if GeoVCSSettings.key_exists(SETTINGS_CONNECTION_KEY):
+        self.connection = GeoVCSConnectionManager().connection
+
+        if self.connection:
             self.setState(Qgis.BrowserItemState.NotPopulated)
-            self.connection = GeoVCSSettings.read_object(
-                SETTINGS_CONNECTION_KEY,
-                GeoVCSConnection,
-            )
             self.setName(
                 f"GeoVCS at {self.connection.database}/{self.connection.branch}"
-            )
-            QgsMessageLog.logMessage(
-                f"Found GeoVCS connection '{self.connection.connection_string}'",
-                "GeoVCS",
-                Qgis.MessageLevel.Success,
             )
         else:
             self.connection = None
@@ -166,7 +161,7 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
             action_connect.triggered.connect(lambda: self._connect(item))
             menu.addAction(action_connect)
 
-            if not GeoVCSSettings.key_exists(SETTINGS_CONNECTION_KEY):
+            if not GeoVCSConnectionManager().is_connected():
                 return
 
             action_edit = QAction(
@@ -174,7 +169,7 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
                 "Edit connection...",
                 menu,
             )
-            action_edit.triggered.connect(lambda: self._edit(item))
+            action_edit.triggered.connect(lambda: self._connect(item))
             menu.addAction(action_edit)
 
             action_refresh = QAction(
@@ -193,35 +188,20 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
             action_disconnect.triggered.connect(lambda: self._disconnect(item))
             menu.addAction(action_disconnect)
 
-    def _connect(self, item: GeoVCSConnectionsRootItem):
-        dialog_create_connection = GeoVCSDialogConnectionCreate()
-        if dialog_create_connection.exec() != QDialog.DialogCode.Accepted:
-            return
-        item.refresh()
-
     def _refresh(self, item: GeoVCSConnectionsRootItem):
         item.refresh()
 
-    def _edit(self, item: GeoVCSConnectionsRootItem):
-        if item.connection is None:
+    def _connect(self, item: GeoVCSConnectionsRootItem):
+        connection, ok = GeoVCSDialogConnectionCreate().execute(
+            None,
+            GeoVCSConnectionManager().connection,
+        )
+        if connection and ok:
+            GeoVCSConnectionManager().connect(connection)
             item.refresh()
-            return
-
-        dialog_edit_connection = GeoVCSDialogConnectionEdit(item.connection)
-        if dialog_edit_connection.exec() != QDialog.DialogCode.Accepted:
-            return
-        item.refresh()
 
     def _disconnect(self, item: GeoVCSConnectionsRootItem):
-        if item.connection is None:
-            return
-
-        GeoVCSSettings.remove(SETTINGS_CONNECTION_KEY)
-        iface.messageBar().pushMessage(  # type: ignore
-            "GeoVCS - Connection Removed",
-            f"Database connection '{item.connection.connection_string}' disconnected successfully.",
-            Qgis.MessageLevel.Success,
-        )
+        GeoVCSConnectionManager().disconnect()
         item.depopulate()
         item.refresh()
 

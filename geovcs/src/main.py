@@ -1,17 +1,16 @@
-from qgis.core import QgsApplication
+from qgis.core import Qgis, QgsApplication, QgsMessageLog
 from qgis.gui import QgisInterface, QgsGui
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import QToolBar
 
 from geovcs.src.browser import GeoVCSDataItemGuiProvider, GeoVCSDataItemProvider
+from geovcs.src.constant import VERSION
 from geovcs.src.form.dock_version_manager import GeoVCSDockVersionManagerDock
 from geovcs.src.util import get_logo
 
 
 class GeoVCS:
     def __init__(self, iface: QgisInterface):
-        # os.environ["MYSQL_PWD"] = "gis"
-
         self.iface = iface
         self.toolbar: QToolBar | None = None
         self.action_show_dock = None
@@ -21,6 +20,12 @@ class GeoVCS:
         self.dock_version_manager: GeoVCSDockVersionManagerDock | None = None
 
     def initGui(self):
+        QgsMessageLog.logMessage(
+            f"Initializing GeoVCS {VERSION}",
+            "GeoVCS",
+            Qgis.MessageLevel.Success,
+        )
+
         data_item_provider_registry = QgsApplication.dataItemProviderRegistry()
         data_item_gui_provider_registry = QgsGui.dataItemGuiProviderRegistry()
         plugin_menu = self.iface.pluginMenu()

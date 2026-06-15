@@ -1,3 +1,4 @@
+import os
 import posixpath
 from dataclasses import asdict, dataclass
 from functools import cached_property
@@ -10,8 +11,9 @@ from qgis.core import (
     QgsAuthMethodConfig,
     QgsSettings,
 )
+from qgis.utils import iface
 
-from geovcs.src.constant import SETTINGS_BASE_KEY
+from geovcs.src.constant import SETTINGS_BASE_KEY, SETTINGS_CONNECTION_KEY
 
 
 @dataclass
@@ -201,3 +203,59 @@ class GeoVCSSettings:
         for group in groups:
             yield group
         settings.endGroup()
+
+
+class GeoVCSConnectionManagerMetaclass(type):
+    _instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            instance = super().__call__(*args, **kwargs)
+            cls._instances[cls] = instance
+        return cls._instances[cls]
+
+
+class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
+    def __init__(self) -> None:
+        self._connection: GeoVCSConnection | None = None
+        if GeoVCSSettings.key_exists(SETTINGS_CONNECTION_KEY):
+            self._connection = GeoVCSSettings.read_object(
+                SETTINGS_CONNECTION_KEY,
+                GeoVCSConnection,
+            )
+
+        if self._connection is not None and self._connection.password is not None:
+            os.environ["MYSQL_PWD"] = self._connection.password
+
+    def connect(self, connection: GeoVCSConnection):
+        self._connection = connection
+        if GeoVCSSettings.key_exists(SETTINGS_CONNECTION_KEY):
+            iface.messageBar().pushMessage(  # type: ignore
+                "GeoVCS - Connection Updated",
+                f"Database connection '{self._connection.connection_string}' updated successfully.",
+                Qgis.MessageLevel.Success,
+            )
+        else:
+            iface.messageBar().pushMessage(  # type: ignore
+                "GeoVCS - Connection Created",
+                f"Database connection '{self._connection.connection_string}' created successfully.",
+                Qgis.MessageLevel.Success,
+            )
+        GeoVCSSettings.write_object(SETTINGS_CONNECTION_KEY, self._connection)
+
+    def disconnect(self):
+        if self._connection:
+            iface.messageBar().pushMessage(  # type: ignore
+                "GeoVCS - Connection Removed",
+                f"Database connection '{self._connection.connection_string}' disconnected successfully.",
+                Qgis.MessageLevel.Success,
+            )
+            self._connection = None
+            GeoVCSSettings.remove(SETTINGS_CONNECTION_KEY)
+
+    def is_connected(self) -> bool:
+        return self._connection is not None
+
+    @property
+    def connection(self) -> GeoVCSConnection | None:
+        return self._connection
