@@ -1,7 +1,6 @@
 import posixpath
 
 from osgeo import ogr
-from osgeo.ogr import Layer
 from qgis.core import (
     Qgis,
     QgsApplication,
@@ -43,6 +42,36 @@ class GeoVCSLayerItem(QgsLayerItem):
     def hasChildren(self):
         return False
 
+    def _ogr_geometry_type_to_qgis_browser_layer_type(
+        self,
+        ogr_geometry_type,
+    ) -> Qgis.BrowserLayerType:
+        if ogr_geometry_type in (
+            ogr.wkbPoint,
+            ogr.wkbPoint25D,
+            ogr.wkbMultiPoint,
+            ogr.wkbMultiPoint25D,
+        ):
+            return Qgis.BrowserLayerType.Point
+        elif ogr_geometry_type in (
+            ogr.wkbLineString,
+            ogr.wkbLineString25D,
+            ogr.wkbMultiLineString,
+            ogr.wkbMultiLineString25D,
+        ):
+            return Qgis.BrowserLayerType.Line
+        elif ogr_geometry_type in (
+            ogr.wkbPolygon,
+            ogr.wkbPolygon25D,
+            ogr.wkbMultiPolygon,
+            ogr.wkbMultiPolygon25D,
+        ):
+            return Qgis.BrowserLayerType.Polygon
+        elif ogr_geometry_type == ogr.wkbNone:
+            return Qgis.BrowserLayerType.Table
+        else:
+            return Qgis.BrowserLayerType.NoType
+
 
 class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
     def __init__(self, parent):
@@ -57,7 +86,7 @@ class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
         self._update_name()
 
     def _update_name(self):
-        connection = GeoVCSConnectionManager().connection
+        connection = GeoVCSConnectionManager().get_connection()
         if connection:
             self.setState(Qgis.BrowserItemState.NotPopulated)
             self.setName(
@@ -83,32 +112,16 @@ class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
     def createChildren(self) -> list[GeoVCSLayerItem]:  # type: ignore
         self._update_name()
 
-        connection = GeoVCSConnectionManager().connection
-        if not connection:
+        if not GeoVCSConnectionManager().is_connected():
             self.setState(Qgis.BrowserItemState.Populated)
             return []
 
         self.setState(Qgis.BrowserItemState.Populating)
         items: list[GeoVCSLayerItem] = []
-        datasource = ogr.Open(connection.ogr_connection_string)
-        QgsMessageLog.logMessage(
-            f"Connected to GeoVCS '{connection.connection_string}'",
-            "GeoVCS",
-            Qgis.MessageLevel.Success,
-        )
-        layer_count = datasource.GetLayerCount()
-        QgsMessageLog.logMessage(
-            f"Found {layer_count} layers in {connection.connection_string}",
-            "GeoVCS",
-            Qgis.MessageLevel.Success,
-        )
-
-        for i in range(layer_count):
-            layer: Layer = datasource.GetLayer(i)
+        for layer in GeoVCSConnectionManager().get_layers():
             item = GeoVCSLayerItem(
                 self,
                 GeoVCSLayer(
-                    connection,
                     posixpath.join(self.path(), layer.GetName()),
                     layer.GetName(),
                     layer.GetGeometryColumn(),
@@ -123,8 +136,6 @@ class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
                 "GeoVCS",
                 Qgis.MessageLevel.Success,
             )
-        datasource = None
-
         self.setState(Qgis.BrowserItemState.Populated)
         return items
 
@@ -191,7 +202,7 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
     def _connect(self, item: GeoVCSConnectionsRootItem):
         connection, ok = GeoVCSDialogConnectionCreate().execute(
             None,
-            GeoVCSConnectionManager().connection,
+            GeoVCSConnectionManager().get_connection(),
         )
         if connection and ok:
             GeoVCSConnectionManager().connect(connection)

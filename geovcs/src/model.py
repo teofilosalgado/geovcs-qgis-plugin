@@ -5,6 +5,7 @@ from functools import cached_property
 from typing import Any, Generator
 
 from osgeo import ogr
+from osgeo.ogr import Layer
 from qgis.core import (
     Qgis,
     QgsApplication,
@@ -13,7 +14,12 @@ from qgis.core import (
 )
 from qgis.utils import iface
 
-from geovcs.src.constant import SETTINGS_BASE_KEY, SETTINGS_CONNECTION_KEY
+from geovcs.src.constant import (
+    QUERY_ALL_BRANCHES,
+    QUERY_STATUS,
+    SETTINGS_BASE_KEY,
+    SETTINGS_CONNECTION_KEY,
+)
 
 
 @dataclass
@@ -80,18 +86,23 @@ class GeoVCSConnection:
         )
         return value
 
+    def test(self) -> bool:
+        datasource = ogr.Open(self.ogr_connection_string)
+        if datasource is None:
+            return False
+        datasource = None
+        return True
+
 
 class GeoVCSLayer:
     def __init__(
         self,
-        connection: GeoVCSConnection,
         path: str,
         name: str,
         geometry_column: str,
         key_column: str,
         ogr_layer_type,
     ):
-        self.connection: GeoVCSConnection = connection
         self.path: str = path
         self.name: str = name
         self.geometry_column: str = geometry_column
@@ -100,16 +111,19 @@ class GeoVCSLayer:
         self.layer_type: Qgis.BrowserLayerType = (
             self._ogr_geometry_type_to_qgis_browser_layer_type(ogr_layer_type)
         )
-
         self.provider_key: str = "ogr"
 
-        self.uri = (
-            f"MySQL:{self.connection.database}/{self.connection.branch},"
-            f"host={self.connection.host},"
-            f"port={self.connection.port},"
-            f"user={self.connection.username}"
-            # f"password={self.connection.password}"
-        )
+        connection = GeoVCSConnectionManager().get_connection()
+        if connection:
+            self.uri = (
+                f"MySQL:{connection.database}/{connection.branch},"
+                f"host={connection.host},"
+                f"port={connection.port},"
+                f"user={connection.username},"
+                f"tables={self.name}"
+            )
+        else:
+            self.uri = None
 
     def _ogr_geometry_type_to_qgis_browser_layer_type(
         self,
@@ -215,6 +229,12 @@ class GeoVCSConnectionManagerMetaclass(type):
         return cls._instances[cls]
 
 
+@dataclass
+class GeoVCSChange:
+    table: str
+    status: str
+
+
 class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
     def __init__(self) -> None:
         self._connection: GeoVCSConnection | None = None
@@ -259,6 +279,48 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
     def is_connected(self) -> bool:
         return self._connection is not None
 
-    @property
-    def connection(self) -> GeoVCSConnection | None:
+    def get_connection(self) -> GeoVCSConnection | None:
         return self._connection
+
+    def get_branches(self) -> Generator[str, None, None]:
+        if not self._connection:
+            raise RuntimeError("No connection provided")
+
+        datasource = ogr.Open(self._connection.ogr_connection_string)
+        result = datasource.ExecuteSQL(QUERY_ALL_BRANCHES)
+
+        if result is not None:
+            for feature in result:
+                name = feature.GetFieldAsString(0)
+                if name:
+                    yield name
+
+    def get_layers(self) -> Generator[Layer, None, None]:
+        if not self._connection:
+            raise RuntimeError("No connection provided")
+
+        datasource = ogr.Open(self._connection.ogr_connection_string)
+        layer_count = datasource.GetLayerCount()
+        for i in range(layer_count):
+            layer: Layer = datasource.GetLayer(i)
+            yield layer
+
+    def get_changes(self) -> Generator[GeoVCSChange, None, None]:
+        if not self._connection:
+            raise RuntimeError("No connection provided")
+
+        datasource = ogr.Open(self._connection.ogr_connection_string)
+        result = datasource.ExecuteSQL(QUERY_STATUS)
+
+        if result is not None:
+            for feature in result:
+                table = feature.GetFieldAsString(0)
+                status = feature.GetFieldAsString(1)
+
+                yield GeoVCSChange(table, status)
+
+            # Limpeza obrigatória do OGR
+            if datasource and result:
+                datasource.ReleaseResultSet(result)
+            if datasource:
+                datasource = None

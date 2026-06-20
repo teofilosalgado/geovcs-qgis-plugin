@@ -1,6 +1,5 @@
 import os
 
-from osgeo import ogr
 from qgis.core import Qgis, QgsMessageLog
 from qgis.gui import QgsAuthSettingsWidget
 from qgis.PyQt import uic
@@ -83,10 +82,10 @@ class GeoVCSDialogConnection(QDialog, FORM_CLASS):
             )
             return False
 
-        data = self._get_data()
+        connection = self._get_data()
         try:
-            datasource = ogr.Open(data.ogr_connection_string)
-            if datasource is None:
+            result = connection.test()
+            if not result:
                 QMessageBox.critical(
                     self,
                     "Connection Error",
@@ -100,8 +99,6 @@ class GeoVCSDialogConnection(QDialog, FORM_CLASS):
                 f"Check your credentials and server availability: {e}.",
             )
             return False
-        datasource = None
-
         return True
 
     def _test(self):
