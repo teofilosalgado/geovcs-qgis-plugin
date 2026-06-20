@@ -15,7 +15,9 @@ from qgis.core import (
 from qgis.utils import iface
 
 from geovcs.src.constant import (
+    QUERY_ADD,
     QUERY_ALL_BRANCHES,
+    QUERY_COMMIT,
     QUERY_STATUS,
     SETTINGS_BASE_KEY,
     SETTINGS_CONNECTION_KEY,
@@ -319,8 +321,45 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
 
                 yield GeoVCSChange(table, status)
 
-            # Limpeza obrigatória do OGR
             if datasource and result:
                 datasource.ReleaseResultSet(result)
             if datasource:
                 datasource = None
+
+    def add_all(self) -> int | None:
+        if not self._connection:
+            raise RuntimeError("No connection provided")
+
+        datasource = ogr.Open(self._connection.ogr_connection_string)
+        result = datasource.ExecuteSQL(QUERY_ADD)
+
+        status = None
+        if result is not None:
+            for feature in result:
+                status = int(feature.GetFieldAsInteger(0))
+
+        if datasource and result:
+            datasource.ReleaseResultSet(result)
+        if datasource:
+            datasource = None
+
+        return status
+
+    def commit(self, message: str) -> str | None:
+        if not self._connection:
+            raise RuntimeError("No connection provided")
+
+        datasource = ogr.Open(self._connection.ogr_connection_string)
+        result = datasource.ExecuteSQL(QUERY_COMMIT.substitute(message=message))
+
+        hash = None
+        if result is not None:
+            for feature in result:
+                hash = feature.GetFieldAsString(0)
+
+        if datasource and result:
+            datasource.ReleaseResultSet(result)
+        if datasource:
+            datasource = None
+
+        return hash

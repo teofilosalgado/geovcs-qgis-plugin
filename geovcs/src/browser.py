@@ -76,12 +76,6 @@ class GeoVCSLayerItem(QgsLayerItem):
 class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
     def __init__(self, parent):
         super().__init__(parent, PROVIDER_KEY, f"/{PROVIDER_KEY}", PROVIDER_KEY)
-        QgsMessageLog.logMessage(
-            "__init__'",
-            "GeoVCS",
-            Qgis.MessageLevel.Success,
-        )
-
         self.setCapabilitiesV2(Qgis.BrowserItemCapability.Fertile)
         self._update_name()
 
