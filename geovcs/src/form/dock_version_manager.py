@@ -82,9 +82,8 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
             return
 
         self.setEnabled(False)
-        status = GeoVCSConnectionManager().add_all()
-        if status is not None and status == 0:
-            hash = GeoVCSConnectionManager().commit(message)
+        hash = GeoVCSConnectionManager().add_all_and_commit(message)
+        if hash:
             iface.messageBar().pushMessage(  # type: ignore
                 "GeoVCS - Commit Created",
                 f"Commit '{hash}' created successfully.",

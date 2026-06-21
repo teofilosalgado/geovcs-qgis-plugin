@@ -33,11 +33,6 @@ QUERY_STATUS = """
 """
 
 # sql
-QUERY_ADD = """
-    CALL DOLT_ADD('--all')
-"""
-
-# sql
 QUERY_COMMIT = Template("""
-    CALL DOLT_COMMIT('-m', '$message');
+    CALL DOLT_COMMIT('-A', '-m', '$message')
 """)

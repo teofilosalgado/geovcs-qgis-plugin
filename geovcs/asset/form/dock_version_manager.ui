@@ -16,6 +16,9 @@
     <height>700</height>
    </size>
   </property>
+  <property name="allowedAreas">
+   <set>Qt::DockWidgetArea::LeftDockWidgetArea|Qt::DockWidgetArea::RightDockWidgetArea</set>
+  </property>
   <property name="windowTitle">
    <string>Version Manager</string>
   </property>

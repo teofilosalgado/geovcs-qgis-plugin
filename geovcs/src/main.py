@@ -42,7 +42,7 @@ class GeoVCS:
         if self.action_show_dock and self.toolbar:
             self.action_show_dock.setText("Version Manager")
             self.action_show_dock.setIcon(
-                QgsApplication.getThemeIcon("/mIconQueryHistory.svg")
+                QgsApplication.getThemeIcon("/dependencies.svg")
             )
             self.toolbar.addAction(self.action_show_dock)
 
