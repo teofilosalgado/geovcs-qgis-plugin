@@ -15,9 +15,10 @@ from qgis.core import (
 from qgis.utils import iface
 
 from geovcs.src.constant import (
-    QUERY_ALL_BRANCHES,
-    QUERY_COMMIT,
-    QUERY_STATUS,
+    CALL__DOLT_COMMIT_HASH_OUT,
+    SELECT__DOLT_BRANCHES,
+    SELECT__DOLT_STATUS,
+    SELECT__HASH,
     SETTINGS_BASE_KEY,
     SETTINGS_CONNECTION_KEY,
 )
@@ -288,7 +289,7 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
             raise RuntimeError("No connection provided")
 
         datasource = ogr.Open(self._connection.ogr_connection_string)
-        result = datasource.ExecuteSQL(QUERY_ALL_BRANCHES)
+        result = datasource.ExecuteSQL(SELECT__DOLT_BRANCHES)
 
         if result is not None:
             for feature in result:
@@ -311,7 +312,7 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
             raise RuntimeError("No connection provided")
 
         datasource = ogr.Open(self._connection.ogr_connection_string)
-        result = datasource.ExecuteSQL(QUERY_STATUS)
+        result = datasource.ExecuteSQL(SELECT__DOLT_STATUS)
 
         if result is not None:
             for feature in result:
@@ -330,15 +331,20 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
             raise RuntimeError("No connection provided")
 
         datasource = ogr.Open(self._connection.ogr_connection_string)
+        result = datasource.ExecuteSQL(
+            CALL__DOLT_COMMIT_HASH_OUT.substitute(message=message)
+        )
+        if datasource and result:
+            datasource.ReleaseResultSet(result)
 
-        result = datasource.ExecuteSQL(QUERY_COMMIT.substitute(message=message))
         hash = None
+        result = datasource.ExecuteSQL(SELECT__HASH)
         if result is not None:
             for feature in result:
                 hash = feature.GetFieldAsString(0)
-
         if datasource and result:
             datasource.ReleaseResultSet(result)
+
         if datasource:
             datasource = None
 

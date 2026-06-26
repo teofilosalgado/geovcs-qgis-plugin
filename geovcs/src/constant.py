@@ -12,7 +12,7 @@ FORM_DIRECTORY_PATH = os.path.abspath(
 )
 
 # sql
-QUERY_ALL_BRANCHES = """
+SELECT__DOLT_BRANCHES = """
     SELECT
         name
     FROM
@@ -22,7 +22,7 @@ QUERY_ALL_BRANCHES = """
 """
 
 # sql
-QUERY_STATUS = """
+SELECT__DOLT_STATUS = """
     SELECT
         table_name,
         status
@@ -32,7 +32,11 @@ QUERY_STATUS = """
         table_name ASC
 """
 
-# sql
-QUERY_COMMIT = Template("""
-    CALL DOLT_COMMIT('-A', '-m', '$message')
+CALL__DOLT_COMMIT_HASH_OUT = Template("""
+    CALL DOLT_COMMIT_HASH_OUT (@hash, '-A', '-m', '$message')
 """)
+
+# sql
+SELECT__HASH = """
+    SELECT @hash
+"""
