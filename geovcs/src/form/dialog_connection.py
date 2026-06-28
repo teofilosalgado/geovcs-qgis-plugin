@@ -100,7 +100,7 @@ class GeoVCSDialogConnection(QDialog, FORM_CLASS):
         if self._validate():
             iface.messageBar().pushMessage(  # type: ignore
                 "GeoVCS - Connection Established",
-                f"Connection with database instance '{self.edit_host}:{self.edit_port}@{self.edit_database}/{self.edit_branch}' established successfully.",
+                f"Connection with database instance '{self.edit_host.text().strip()}:{self.edit_port.text().strip()}@{self.edit_database.text().strip()}/{self.edit_branch.text().strip()}' established successfully.",
                 Qgis.MessageLevel.Success,
             )
         self.setEnabled(True)
@@ -125,7 +125,7 @@ class GeoVCSDialogConnection(QDialog, FORM_CLASS):
         self.edit_port.setText(GeoVCSConnectionManager().port)
         self.edit_database.setText(GeoVCSConnectionManager().database)
         self.edit_branch.setText(GeoVCSConnectionManager().branch)
-        self.auth_settings.setConfigId(GeoVCSConnectionManager().get_auth_config_id)
+        self.auth_settings.setConfigId(GeoVCSConnectionManager().auth_config_id)
 
     @classmethod
     def execute(cls, parent=None) -> tuple[GeoVCSConnection | None, bool]:

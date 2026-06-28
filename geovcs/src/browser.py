@@ -12,6 +12,7 @@ from qgis.core import (
 )
 from qgis.gui import QgsDataItemGuiProvider
 from qgis.PyQt.QtWidgets import QAction, QDialog  # type: ignore
+from qgis.utils import iface
 
 from geovcs.src.constant import PROVIDER_KEY
 from geovcs.src.form import (
@@ -195,11 +196,29 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
     def _manage_connection(self, item: GeoVCSConnectionsRootItem):
         connection, ok = GeoVCSDialogConnectionCreate().execute()
         if connection and ok:
-            GeoVCSConnectionManager().connect(connection)
+            if GeoVCSConnectionManager().is_connected:
+                GeoVCSConnectionManager().connect(connection)
+                iface.messageBar().pushMessage(  # type: ignore
+                    "GeoVCS - Connection Updated",
+                    f"Database connection '{connection.connection_string}' updated successfully.",
+                    Qgis.MessageLevel.Success,
+                )
+            else:
+                GeoVCSConnectionManager().connect(connection)
+                iface.messageBar().pushMessage(  # type: ignore
+                    "GeoVCS - Connection Created",
+                    f"Database connection '{connection.connection_string}' created successfully.",
+                    Qgis.MessageLevel.Success,
+                )
             item.refresh()
 
     def _disconnect(self, item: GeoVCSConnectionsRootItem):
         GeoVCSConnectionManager().disconnect()
+        iface.messageBar().pushMessage(  # type: ignore
+            "GeoVCS - Disconnected",
+            f"Database connection '{self._connection.connection_string}' disconnected successfully.",
+            Qgis.MessageLevel.Success,
+        )
         item.depopulate()
         item.refresh()
 

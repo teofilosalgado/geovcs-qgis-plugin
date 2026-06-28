@@ -245,35 +245,6 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
         if self._connection is not None and self._connection.password is not None:
             os.environ["MYSQL_PWD"] = self._connection.password
 
-    def connect(self, connection: GeoVCSConnection):
-        self._connection = connection
-        if GeoVCSSettings.key_exists(SETTINGS_CONNECTION_KEY):
-            iface.messageBar().pushMessage(  # type: ignore
-                "GeoVCS - Connection Updated",
-                f"Database connection '{self._connection.connection_string}' updated successfully.",
-                Qgis.MessageLevel.Success,
-            )
-        else:
-            iface.messageBar().pushMessage(  # type: ignore
-                "GeoVCS - Connection Created",
-                f"Database connection '{self._connection.connection_string}' created successfully.",
-                Qgis.MessageLevel.Success,
-            )
-        GeoVCSSettings.write_object(SETTINGS_CONNECTION_KEY, self._connection)
-        if self._connection.password is not None:
-            os.environ["MYSQL_PWD"] = self._connection.password
-
-    def disconnect(self):
-        if self._connection:
-            iface.messageBar().pushMessage(  # type: ignore
-                "GeoVCS - Connection Removed",
-                f"Database connection '{self._connection.connection_string}' disconnected successfully.",
-                Qgis.MessageLevel.Success,
-            )
-            self._connection = None
-            GeoVCSSettings.remove(SETTINGS_CONNECTION_KEY)
-            os.environ.pop("MYSQL_PWD", None)
-
     @property
     def is_connected(self) -> bool:
         return self._connection is not None
@@ -313,6 +284,18 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
         if self._connection:
             return self._connection.auth_config_id
         return None
+
+    def connect(self, connection: GeoVCSConnection):
+        self._connection = connection
+        GeoVCSSettings.write_object(SETTINGS_CONNECTION_KEY, self._connection)
+        if self._connection.password is not None:
+            os.environ["MYSQL_PWD"] = self._connection.password
+
+    def disconnect(self):
+        if self._connection:
+            self._connection = None
+            GeoVCSSettings.remove(SETTINGS_CONNECTION_KEY)
+            os.environ.pop("MYSQL_PWD", None)
 
     def get_branches(self) -> Generator[str, None, None]:
         if not self._connection:
@@ -379,3 +362,32 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
             datasource = None
 
         return hash
+
+    def create_branch(self, branch: str):
+        if not self._connection:
+            raise RuntimeError("No connection provided")
+
+        datasource = ogr.Open(self._connection.ogr_connection_string)
+        result = datasource.ExecuteSQL(
+            query.CALL__DOLT_BRANCH.substitute(branch=branch)
+        )
+        if datasource and result:
+            datasource.ReleaseResultSet(result)
+        if datasource:
+            datasource = None
+
+    def checkout(self, branch: str):
+        if not self._connection:
+            raise RuntimeError("No connection provided")
+
+        datasource = ogr.Open(self._connection.ogr_connection_string)
+        result = datasource.ExecuteSQL(
+            query.CALL__DOLT_CHECKOUT.substitute(branch=branch)
+        )
+        if datasource and result:
+            datasource.ReleaseResultSet(result)
+        if datasource:
+            datasource = None
+
+        self._connection.branch = branch
+        self.connect(self._connection)

@@ -29,3 +29,12 @@ CALL__DOLT_COMMIT_HASH_OUT = Template("""
 SELECT__HASH = """
     SELECT @hash
 """
+
+CALL__DOLT_BRANCH = Template("""
+    CALL DOLT_BRANCH('$branch')
+""")
+
+
+CALL__DOLT_CHECKOUT = Template("""
+    CALL DOLT_CHECKOUT('$branch')
+""")
