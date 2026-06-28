@@ -8,7 +8,7 @@ from qgis.PyQt.QtWidgets import QDialog, QMessageBox
 from qgis.utils import iface
 
 from geovcs.src.constant import FORM_DIRECTORY_PATH
-from geovcs.src.model import GeoVCSConnection
+from geovcs.src.model import GeoVCSConnection, GeoVCSConnectionManager
 
 FORM_FILE = os.path.join(FORM_DIRECTORY_PATH, "dialog_connection.ui")
 
@@ -19,12 +19,6 @@ class GeoVCSDialogConnection(QDialog, FORM_CLASS):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setupUi(self)
-
-        QgsMessageLog.logMessage(
-            f"Created form '{self.windowTitle()}' using '{FORM_FILE}'",
-            "GeoVCS",
-            Qgis.MessageLevel.Success,
-        )
 
         self.auth_settings = QgsAuthSettingsWidget(self)
         self.v_box_layout.addWidget(self.auth_settings)
@@ -126,21 +120,19 @@ class GeoVCSDialogConnection(QDialog, FORM_CLASS):
             auth_config_id=self.auth_settings.configId(),
         )
 
-    def _set_data(self, data: GeoVCSConnection):
-        self.edit_host.setText(data.host)
-        self.edit_port.setText(data.port)
-        self.edit_database.setText(data.database)
-        self.edit_branch.setText(data.branch)
-        self.auth_settings.setConfigId(data.auth_config_id)
+    def _load_data_from_connection_manager(self):
+        self.edit_host.setText(GeoVCSConnectionManager().host)
+        self.edit_port.setText(GeoVCSConnectionManager().port)
+        self.edit_database.setText(GeoVCSConnectionManager().database)
+        self.edit_branch.setText(GeoVCSConnectionManager().branch)
+        self.auth_settings.setConfigId(GeoVCSConnectionManager().get_auth_config_id)
 
     @classmethod
-    def execute(
-        cls, parent=None, data: GeoVCSConnection | None = None
-    ) -> tuple[GeoVCSConnection | None, bool]:
+    def execute(cls, parent=None) -> tuple[GeoVCSConnection | None, bool]:
         dialog = cls(parent)
 
-        if data:
-            dialog._set_data(data)
+        if GeoVCSConnectionManager().is_connected:
+            dialog._load_data_from_connection_manager()
 
         if dialog.exec() == QDialog.DialogCode.Accepted:
             return dialog._get_data(), True
@@ -158,4 +150,3 @@ class GeoVCSDialogConnectionEdit(GeoVCSDialogConnection):
     def __init__(self, data: GeoVCSConnection, parent=None):
         super().__init__(parent)
         self.setWindowTitle("GeoVCS - Edit Connection")
-        self._set_data(data)

@@ -15,12 +15,9 @@ from qgis.core import (
 from qgis.utils import iface
 
 from geovcs.src.constant import (
-    CALL__DOLT_COMMIT_HASH_OUT,
-    SELECT__DOLT_BRANCHES,
-    SELECT__DOLT_STATUS,
-    SELECT__HASH,
     SETTINGS_BASE_KEY,
     SETTINGS_CONNECTION_KEY,
+    query,
 )
 
 
@@ -115,13 +112,12 @@ class GeoVCSLayer:
         )
         self.provider_key: str = "ogr"
 
-        connection = GeoVCSConnectionManager().get_connection()
-        if connection:
+        if GeoVCSConnectionManager().is_connected:
             self.uri = (
-                f"MySQL:{connection.database}/{connection.branch},"
-                f"host={connection.host},"
-                f"port={connection.port},"
-                f"user={connection.username},"
+                f"MySQL:{GeoVCSConnectionManager().database}/{GeoVCSConnectionManager().branch},"
+                f"host={GeoVCSConnectionManager().host},"
+                f"port={GeoVCSConnectionManager().port},"
+                f"user={GeoVCSConnectionManager().username},"
                 f"tables={self.name}"
             )
         else:
@@ -278,18 +274,52 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
             GeoVCSSettings.remove(SETTINGS_CONNECTION_KEY)
             os.environ.pop("MYSQL_PWD", None)
 
+    @property
     def is_connected(self) -> bool:
         return self._connection is not None
 
-    def get_connection(self) -> GeoVCSConnection | None:
-        return self._connection
+    @property
+    def branch(self) -> str | None:
+        if self._connection:
+            return self._connection.branch
+        return None
+
+    @property
+    def database(self) -> str | None:
+        if self._connection:
+            return self._connection.database
+        return None
+
+    @property
+    def host(self) -> str | None:
+        if self._connection:
+            return self._connection.host
+        return None
+
+    @property
+    def port(self) -> str | None:
+        if self._connection:
+            return self._connection.port
+        return None
+
+    @property
+    def username(self) -> str | None:
+        if self._connection:
+            return self._connection.username
+        return None
+
+    @property
+    def auth_config_id(self) -> str | None:
+        if self._connection:
+            return self._connection.auth_config_id
+        return None
 
     def get_branches(self) -> Generator[str, None, None]:
         if not self._connection:
             raise RuntimeError("No connection provided")
 
         datasource = ogr.Open(self._connection.ogr_connection_string)
-        result = datasource.ExecuteSQL(SELECT__DOLT_BRANCHES)
+        result = datasource.ExecuteSQL(query.SELECT__DOLT_BRANCHES)
 
         if result is not None:
             for feature in result:
@@ -312,7 +342,7 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
             raise RuntimeError("No connection provided")
 
         datasource = ogr.Open(self._connection.ogr_connection_string)
-        result = datasource.ExecuteSQL(SELECT__DOLT_STATUS)
+        result = datasource.ExecuteSQL(query.SELECT__DOLT_STATUS)
 
         if result is not None:
             for feature in result:
@@ -332,13 +362,13 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
 
         datasource = ogr.Open(self._connection.ogr_connection_string)
         result = datasource.ExecuteSQL(
-            CALL__DOLT_COMMIT_HASH_OUT.substitute(message=message)
+            query.CALL__DOLT_COMMIT_HASH_OUT.substitute(message=message)
         )
         if datasource and result:
             datasource.ReleaseResultSet(result)
 
         hash = None
-        result = datasource.ExecuteSQL(SELECT__HASH)
+        result = datasource.ExecuteSQL(query.SELECT__HASH)
         if result is not None:
             for feature in result:
                 hash = feature.GetFieldAsString(0)

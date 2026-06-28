@@ -80,11 +80,10 @@ class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
         self._update_name()
 
     def _update_name(self):
-        connection = GeoVCSConnectionManager().get_connection()
-        if connection:
+        if GeoVCSConnectionManager().is_connected:
             self.setState(Qgis.BrowserItemState.NotPopulated)
             self.setName(
-                f"GeoVCS at {connection.username}@{connection.database}/{connection.branch}"
+                f"GeoVCS at {GeoVCSConnectionManager().username}@{GeoVCSConnectionManager().database}/{GeoVCSConnectionManager().branch}"
             )
         else:
             self.connection = None
@@ -106,7 +105,7 @@ class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
     def createChildren(self) -> list[GeoVCSLayerItem]:  # type: ignore
         self._update_name()
 
-        if not GeoVCSConnectionManager().is_connected():
+        if not GeoVCSConnectionManager().is_connected:
             self.setState(Qgis.BrowserItemState.Populated)
             return []
 
@@ -156,22 +155,22 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
             return
 
         if isinstance(item, GeoVCSConnectionsRootItem):
-            if not GeoVCSConnectionManager().is_connected():
+            if not GeoVCSConnectionManager().is_connected:
                 action_connect = QAction(
                     QgsApplication.getThemeIcon("/repositoryConnected.svg"),
                     "Connect...",
                     menu,
                 )
-                action_connect.triggered.connect(lambda: self._connect(item))
+                action_connect.triggered.connect(lambda: self._manage_connection(item))
                 menu.addAction(action_connect)
 
-            if GeoVCSConnectionManager().is_connected():
+            if GeoVCSConnectionManager().is_connected:
                 action_edit = QAction(
                     QgsApplication.getThemeIcon("/mActionToggleEditing.svg"),
                     "Edit...",
                     menu,
                 )
-                action_edit.triggered.connect(lambda: self._connect(item))
+                action_edit.triggered.connect(lambda: self._manage_connection(item))
                 menu.addAction(action_edit)
 
                 action_refresh = QAction(
@@ -193,11 +192,8 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
     def _refresh(self, item: GeoVCSConnectionsRootItem):
         item.refresh()
 
-    def _connect(self, item: GeoVCSConnectionsRootItem):
-        connection, ok = GeoVCSDialogConnectionCreate().execute(
-            None,
-            GeoVCSConnectionManager().get_connection(),
-        )
+    def _manage_connection(self, item: GeoVCSConnectionsRootItem):
+        connection, ok = GeoVCSDialogConnectionCreate().execute()
         if connection and ok:
             GeoVCSConnectionManager().connect(connection)
             item.refresh()
