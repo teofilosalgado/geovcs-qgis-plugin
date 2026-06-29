@@ -224,7 +224,7 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
         GeoVCSConnectionManager().disconnect()
         iface.messageBar().pushMessage(  # type: ignore
             "GeoVCS - Disconnected",
-            f"Database connection '{self._connection.connection_string}' disconnected successfully.",
+            "Database disconnected successfully.",
             Qgis.MessageLevel.Success,
         )
         item.depopulate()

@@ -10,7 +10,6 @@ from qgis.core import (
     Qgis,
     QgsApplication,
     QgsAuthMethodConfig,
-    QgsMessageLog,
     QgsSettings,
 )
 
@@ -388,7 +387,6 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
                 for feature in result:
                     table_name = feature.GetFieldAsString("table_name")
                     status = feature.GetFieldAsString("status")
-
                     yield GeoVCSChange(table_name, status)
         finally:
             if datasource and result:
@@ -436,11 +434,6 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
     def checkout(self, branch: str):
         if not self._connection:
             raise RuntimeError("No connection provided")
-        QgsMessageLog.logMessage(
-            f"{branch} - {query.CALL__DOLT_CHECKOUT.substitute(branch=branch)}",
-            "GeoVCS",
-            Qgis.MessageLevel.Success,
-        )
 
         datasource = ogr.Open(self._connection.ogr_connection_string)
         result = datasource.ExecuteSQL(

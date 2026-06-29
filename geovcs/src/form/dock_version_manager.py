@@ -43,6 +43,11 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
         self.button_refresh_changes.clicked.connect(self.refresh_changes)
         self.button_refresh_branches.clicked.connect(self.refresh_branches)
 
+        # TODO
+        self.edit_connection.setText(
+            f"{GeoVCSConnectionManager().database}@{GeoVCSConnectionManager().host}"
+        )
+
         QgsProject.instance().layersAdded.connect(self.on_layers_added)
         iface.projectRead.connect(self.on_project_read)
 
@@ -57,17 +62,24 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
             Qgis.MessageLevel.Success,
         )
 
-        self._update_layers_data_sources()
+        self._configure_layers(QgsProject.instance().mapLayers().values())
         self._update_changes()
-        self._update_branches()
 
     def on_layers_added(self, layers):
-        self._update_status_on_layer_change(layers)
+        QgsMessageLog.logMessage(
+            f"Added '{len(layers)}' layer(s) to current project",
+            "GeoVCS",
+            Qgis.MessageLevel.Success,
+        )
+        self._configure_layers(layers)
         self._update_changes()
 
     def on_project_read(self):
-        self._update_layers_data_sources()
-        self._update_changes()
+        QgsMessageLog.logMessage(
+            "Project is ready",
+            "GeoVCS",
+            Qgis.MessageLevel.Success,
+        )
         self._update_branches()
 
     def create_branch(self):
@@ -111,30 +123,16 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
         self.edit_message.clear()
         self.setEnabled(True)
 
-    def _update_status_on_layer_change(self, layers):
-        for layer in layers:
-            if layer.providerType() == "ogr" and layer.source().startswith("MySQL:"):
-                try:
-                    layer.afterCommitChanges.disconnect(self._update_changes)
-                except TypeError:
-                    pass
-                layer.afterCommitChanges.connect(self._update_changes)
-
-    def _update_layers_data_sources(self):
+    def _configure_layers(self, layers):
         if not GeoVCSConnectionManager().is_connected:
             return
 
-        geovcs_layers = [
-            layer
-            for layer in QgsProject.instance().mapLayers().values()
-            if layer.providerType() == "ogr" and layer.source().startswith("MySQL:")
-        ]
+        for layer in layers:
+            if layer.providerType() != "ogr" or not layer.source().startswith("MySQL:"):
+                continue
 
-        if geovcs_layers:
-            self.setEnabled(True)
-
-        for geovcs_layer in geovcs_layers:
-            match = re.search(regex.DATA_SOURCE, geovcs_layer.source())
+            # Update data source
+            match = re.search(regex.DATA_SOURCE, layer.source())
             if match:
                 geovcs_layer_branch = match.group("branch")
                 if (
@@ -144,16 +142,27 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
                     new_data_source = re.sub(
                         regex.DATA_SOURCE,
                         rf"\g<before>{GeoVCSConnectionManager().branch}\g<after>",
-                        geovcs_layer.source(),
+                        layer.source(),
                     )
                     QgsMessageLog.logMessage(
-                        f"Changed layer '{geovcs_layer.name()}' datasource from '{geovcs_layer.source()}' to '{new_data_source}'",
+                        f"Updated layer '{layer.name()}' datasource from '{layer.source()}' to '{new_data_source}'",
                         "GeoVCS",
                         Qgis.MessageLevel.Success,
                     )
-                    geovcs_layer.setDataSource(
-                        new_data_source, geovcs_layer.name(), "ogr"
-                    )
+                    layer.setDataSource(new_data_source, layer.name(), "ogr")
+
+            # Connect trigger after commit
+            try:
+                layer.afterCommitChanges.disconnect(self._update_changes)
+            except TypeError:
+                pass
+
+            layer.afterCommitChanges.connect(self._update_changes)
+            QgsMessageLog.logMessage(
+                f"Layer '{layer.name()}' trigger 'afterCommitChanges' connected to 'self._update_changes' method",
+                "GeoVCS",
+                Qgis.MessageLevel.Success,
+            )
 
     def _update_changes(self):
         if not GeoVCSConnectionManager().is_connected:
@@ -175,14 +184,15 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
                 table_item.setEditable(False)
 
                 self.model_status.appendRow([status_item, table_item])
+            QgsMessageLog.logMessage(
+                f"Updated changes from '{GeoVCSConnectionManager().database}@{GeoVCSConnectionManager().host}' at '{GeoVCSConnectionManager().branch}'",
+                "GeoVCS",
+                Qgis.MessageLevel.Success,
+            )
 
     def _update_branches(self):
         if not GeoVCSConnectionManager().is_connected:
             return
-
-        self.edit_connection.setText(
-            f"{GeoVCSConnectionManager().database}@{GeoVCSConnectionManager().host}"
-        )
 
         try:
             self.combo_branches.currentTextChanged.disconnect()
@@ -203,3 +213,9 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
                 )
 
         self.combo_branches.currentTextChanged.connect(self.change_branch)
+        self._update_changes()
+        QgsMessageLog.logMessage(
+            f"Updated branches from '{GeoVCSConnectionManager().database}@{GeoVCSConnectionManager().host}'",
+            "GeoVCS",
+            Qgis.MessageLevel.Success,
+        )
