@@ -17,7 +17,7 @@ from qgis.utils import iface
 from geovcs.src.constant import PROVIDER_KEY
 from geovcs.src.form import (
     GeoVCSDialogConnectionCreate,
-    GeoVCSDialogVersionManager,
+    GeoVCSDialogHistory,
 )
 from geovcs.src.model import (
     GeoVCSConnectionManager,
@@ -182,6 +182,14 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
                 action_refresh.triggered.connect(lambda: self._refresh(item))
                 menu.addAction(action_refresh)
 
+                action_history = QAction(
+                    QgsApplication.getThemeIcon("/mIconQueryHistory.svg"),
+                    "History...",
+                    menu,
+                )
+                action_history.triggered.connect(lambda: self._history(item))
+                menu.addAction(action_history)
+
                 action_disconnect = QAction(
                     QgsApplication.getThemeIcon("/mActionRemove.svg"),
                     "Disconnect",
@@ -222,12 +230,7 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
         item.depopulate()
         item.refresh()
 
-    def _version_manager(self, item: GeoVCSConnectionsRootItem):
-        if item.connection is None:
-            item.refresh()
-            return
-
-        dialog_edit_connection = GeoVCSDialogVersionManager(item.connection)
-        if dialog_edit_connection.exec() != QDialog.DialogCode.Accepted:
+    def _history(self, item: GeoVCSConnectionsRootItem):
+        if GeoVCSDialogHistory().exec() != QDialog.DialogCode.Accepted:
             return
         item.refresh()

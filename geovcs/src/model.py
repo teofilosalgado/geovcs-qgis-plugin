@@ -10,9 +10,9 @@ from qgis.core import (
     Qgis,
     QgsApplication,
     QgsAuthMethodConfig,
+    QgsMessageLog,
     QgsSettings,
 )
-from qgis.utils import iface
 
 from geovcs.src.constant import (
     SETTINGS_BASE_KEY,
@@ -229,8 +229,25 @@ class GeoVCSConnectionManagerMetaclass(type):
 
 @dataclass
 class GeoVCSChange:
-    table: str
+    table_name: str
     status: str
+
+
+@dataclass
+class GeoVCSBranch:
+    name: str
+    hash: str
+    latest_author: str
+    latest_author_date: str
+    dirty: bool
+
+
+@dataclass
+class GeoVCSLog:
+    commit_hash: str
+    committer: str
+    date: str
+    message: str
 
 
 class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
@@ -297,18 +314,52 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
             GeoVCSSettings.remove(SETTINGS_CONNECTION_KEY)
             os.environ.pop("MYSQL_PWD", None)
 
-    def get_branches(self) -> Generator[str, None, None]:
+    def get_logs(self, branch: str) -> Generator[GeoVCSLog, None, None]:
+        if not self._connection:
+            raise RuntimeError("No connection provided")
+
+        datasource = ogr.Open(self._connection.ogr_connection_string)
+        result = datasource.ExecuteSQL(query.SELECT__DOLT_LOG.substitute(branch=branch))
+
+        try:
+            if result is not None:
+                for feature in result:
+                    log = GeoVCSLog(
+                        commit_hash=feature.GetField("commit_hash"),
+                        committer=feature.GetField("committer"),
+                        date=feature.GetField("date"),
+                        message=feature.GetField("message"),
+                    )
+                    yield log
+        finally:
+            if datasource and result:
+                datasource.ReleaseResultSet(result)
+            if datasource:
+                datasource = None
+
+    def get_branches(self) -> Generator[GeoVCSBranch, None, None]:
         if not self._connection:
             raise RuntimeError("No connection provided")
 
         datasource = ogr.Open(self._connection.ogr_connection_string)
         result = datasource.ExecuteSQL(query.SELECT__DOLT_BRANCHES)
 
-        if result is not None:
-            for feature in result:
-                name = feature.GetFieldAsString(0)
-                if name:
-                    yield name
+        try:
+            if result is not None:
+                for feature in result:
+                    branch = GeoVCSBranch(
+                        name=feature.GetField("name"),
+                        hash=feature.GetField("hash"),
+                        latest_author=feature.GetField("latest_author"),
+                        latest_author_date=feature.GetField("latest_author_date"),
+                        dirty=True if feature.GetField("dirty") else False,
+                    )
+                    yield branch
+        finally:
+            if datasource and result:
+                datasource.ReleaseResultSet(result)
+            if datasource:
+                datasource = None
 
     def get_layers(self) -> Generator[Layer, None, None]:
         if not self._connection:
@@ -316,9 +367,14 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
 
         datasource = ogr.Open(self._connection.ogr_connection_string)
         layer_count = datasource.GetLayerCount()
-        for i in range(layer_count):
-            layer: Layer = datasource.GetLayer(i)
-            yield layer
+
+        try:
+            for i in range(layer_count):
+                layer: Layer = datasource.GetLayer(i)
+                yield layer
+        finally:
+            if datasource:
+                datasource = None
 
     def get_changes(self) -> Generator[GeoVCSChange, None, None]:
         if not self._connection:
@@ -327,13 +383,14 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
         datasource = ogr.Open(self._connection.ogr_connection_string)
         result = datasource.ExecuteSQL(query.SELECT__DOLT_STATUS)
 
-        if result is not None:
-            for feature in result:
-                table = feature.GetFieldAsString(0)
-                status = feature.GetFieldAsString(1)
+        try:
+            if result is not None:
+                for feature in result:
+                    table_name = feature.GetFieldAsString("table_name")
+                    status = feature.GetFieldAsString("status")
 
-                yield GeoVCSChange(table, status)
-
+                    yield GeoVCSChange(table_name, status)
+        finally:
             if datasource and result:
                 datasource.ReleaseResultSet(result)
             if datasource:
@@ -379,6 +436,11 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
     def checkout(self, branch: str):
         if not self._connection:
             raise RuntimeError("No connection provided")
+        QgsMessageLog.logMessage(
+            f"{branch} - {query.CALL__DOLT_CHECKOUT.substitute(branch=branch)}",
+            "GeoVCS",
+            Qgis.MessageLevel.Success,
+        )
 
         datasource = ogr.Open(self._connection.ogr_connection_string)
         result = datasource.ExecuteSQL(

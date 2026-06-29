@@ -42,12 +42,14 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
         self.button_commit.clicked.connect(self.commit)
         self.button_refresh_changes.clicked.connect(self.refresh_changes)
         self.button_refresh_branches.clicked.connect(self.refresh_branches)
-        # self.combo_branches.currentTextChanged.connect(self.change_branch)
 
         QgsProject.instance().layersAdded.connect(self.on_layers_added)
         iface.projectRead.connect(self.on_project_read)
 
     def change_branch(self, branch):
+        if not branch:
+            return
+
         GeoVCSConnectionManager().checkout(branch)
         iface.messageBar().pushMessage(  # type: ignore
             "GeoVCS - Switched Branch",
@@ -169,30 +171,35 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
                 status_item = QStandardItem(change.status)
                 status_item.setEditable(False)
 
-                table_item = QStandardItem(change.table)
+                table_item = QStandardItem(change.table_name)
                 table_item.setEditable(False)
 
                 self.model_status.appendRow([status_item, table_item])
 
     def _update_branches(self):
-        self.combo_branches.clear()
-
         if not GeoVCSConnectionManager().is_connected:
             return
 
         self.edit_connection.setText(
             f"{GeoVCSConnectionManager().database}@{GeoVCSConnectionManager().host}"
         )
-        self.combo_branches.insertItem(0, GeoVCSConnectionManager().branch)
-        self.combo_branches.setItemData(
-            0, QFont().setBold(True), Qt.ItemDataRole.FontRole
-        )
 
+        try:
+            self.combo_branches.currentTextChanged.disconnect()
+        except TypeError:
+            pass
+
+        self.combo_branches.clear()
         branches = sorted(
             GeoVCSConnectionManager().get_branches(),
-            key=lambda item: (item != "main", item),
+            key=lambda item: item.name,
         )
         for index, branch in enumerate(branches):
-            if branch != GeoVCSConnectionManager().branch:
-                self.combo_branches.insertItem(index + 1, branch)
-        self.combo_branches.setCurrentIndex(0)
+            self.combo_branches.insertItem(index, branch.name)
+            if GeoVCSConnectionManager().branch == branch.name:
+                self.combo_branches.setCurrentIndex(index)
+                self.combo_branches.setItemData(
+                    index, QFont().setBold(True), Qt.ItemDataRole.FontRole
+                )
+
+        self.combo_branches.currentTextChanged.connect(self.change_branch)

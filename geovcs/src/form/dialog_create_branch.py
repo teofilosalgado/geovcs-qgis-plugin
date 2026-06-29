@@ -1,7 +1,9 @@
 import os
 
 from qgis.PyQt import uic
-from qgis.PyQt.QtWidgets import QDialog
+from qgis.PyQt.QtCore import QRegularExpression
+from qgis.PyQt.QtGui import QRegularExpressionValidator
+from qgis.PyQt.QtWidgets import QDialog, QLabel, QLineEdit, QVBoxLayout
 
 from geovcs.src.constant import FORM_DIRECTORY_PATH
 
@@ -14,6 +16,10 @@ class GeoVCSDialogCreateBranch(QDialog, FORM_CLASS):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setupUi(self)
+
+        self.edit_new_branch.setValidator(
+            QRegularExpressionValidator(QRegularExpression("^[a-z0-9_]+$"))
+        )
 
     @classmethod
     def execute(cls, parent_branch: str, parent=None) -> tuple[str | None, bool]:
