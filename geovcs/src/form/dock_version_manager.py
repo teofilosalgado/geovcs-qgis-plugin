@@ -63,6 +63,7 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
         )
 
         self._configure_layers(QgsProject.instance().mapLayers().values())
+        self._update_branches()
         self._update_changes()
 
     def on_layers_added(self, layers):
@@ -81,6 +82,7 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
             Qgis.MessageLevel.Success,
         )
         self._update_branches()
+        self._update_changes()
 
     def create_branch(self):
         current_branch = self.combo_branches.currentText().strip()
@@ -102,6 +104,7 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
 
     def refresh_branches(self):
         self._update_branches()
+        self._update_changes()
 
     def commit(self):
         if not GeoVCSConnectionManager().is_connected:
@@ -184,11 +187,12 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
                 table_item.setEditable(False)
 
                 self.model_status.appendRow([status_item, table_item])
-            QgsMessageLog.logMessage(
-                f"Updated changes from '{GeoVCSConnectionManager().database}@{GeoVCSConnectionManager().host}' at '{GeoVCSConnectionManager().branch}'",
-                "GeoVCS",
-                Qgis.MessageLevel.Success,
-            )
+                QgsMessageLog.logMessage(
+                    f"Received change '{change.table_name}' from '{GeoVCSConnectionManager().database}@{GeoVCSConnectionManager().host}' at '{GeoVCSConnectionManager().branch}'",
+                    "GeoVCS",
+                    Qgis.MessageLevel.Success,
+                )
+            self.table_status.setModel(self.model_status)
 
     def _update_branches(self):
         if not GeoVCSConnectionManager().is_connected:
@@ -213,7 +217,6 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
                 )
 
         self.combo_branches.currentTextChanged.connect(self.change_branch)
-        self._update_changes()
         QgsMessageLog.logMessage(
             f"Updated branches from '{GeoVCSConnectionManager().database}@{GeoVCSConnectionManager().host}'",
             "GeoVCS",

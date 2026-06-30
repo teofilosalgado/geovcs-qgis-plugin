@@ -318,18 +318,22 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
             raise RuntimeError("No connection provided")
 
         datasource = ogr.Open(self._connection.ogr_connection_string)
-        result = datasource.ExecuteSQL(query.SELECT__DOLT_LOG.substitute(branch=branch))
+        result = datasource.ExecuteSQL(
+            query.CALL__DOLT_CHECKOUT.substitute(branch=self._connection.branch)
+        )
+        if datasource and result:
+            datasource.ReleaseResultSet(result)
 
+        result = datasource.ExecuteSQL(query.SELECT__DOLT_LOG.substitute(branch=branch))
         try:
             if result is not None:
                 for feature in result:
-                    log = GeoVCSLog(
+                    yield GeoVCSLog(
                         commit_hash=feature.GetField("commit_hash"),
                         committer=feature.GetField("committer"),
                         date=feature.GetField("date"),
                         message=feature.GetField("message"),
                     )
-                    yield log
         finally:
             if datasource and result:
                 datasource.ReleaseResultSet(result)
@@ -341,19 +345,23 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
             raise RuntimeError("No connection provided")
 
         datasource = ogr.Open(self._connection.ogr_connection_string)
-        result = datasource.ExecuteSQL(query.SELECT__DOLT_BRANCHES)
+        result = datasource.ExecuteSQL(
+            query.CALL__DOLT_CHECKOUT.substitute(branch=self._connection.branch)
+        )
+        if datasource and result:
+            datasource.ReleaseResultSet(result)
 
+        result = datasource.ExecuteSQL(query.SELECT__DOLT_BRANCHES)
         try:
             if result is not None:
                 for feature in result:
-                    branch = GeoVCSBranch(
+                    yield GeoVCSBranch(
                         name=feature.GetField("name"),
                         hash=feature.GetField("hash"),
                         latest_author=feature.GetField("latest_author"),
                         latest_author_date=feature.GetField("latest_author_date"),
                         dirty=True if feature.GetField("dirty") else False,
                     )
-                    yield branch
         finally:
             if datasource and result:
                 datasource.ReleaseResultSet(result)
@@ -365,12 +373,16 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
             raise RuntimeError("No connection provided")
 
         datasource = ogr.Open(self._connection.ogr_connection_string)
-        layer_count = datasource.GetLayerCount()
+        result = datasource.ExecuteSQL(
+            query.CALL__DOLT_CHECKOUT.substitute(branch=self._connection.branch)
+        )
+        if datasource and result:
+            datasource.ReleaseResultSet(result)
 
+        layer_count = datasource.GetLayerCount()
         try:
             for i in range(layer_count):
-                layer: Layer = datasource.GetLayer(i)
-                yield layer
+                yield datasource.GetLayer(i)
         finally:
             if datasource:
                 datasource = None
@@ -379,15 +391,22 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
         if not self._connection:
             raise RuntimeError("No connection provided")
 
+        changes: list[GeoVCSChange] = []
         datasource = ogr.Open(self._connection.ogr_connection_string)
-        result = datasource.ExecuteSQL(query.SELECT__DOLT_STATUS)
+        result = datasource.ExecuteSQL(
+            query.CALL__DOLT_CHECKOUT.substitute(branch=self._connection.branch)
+        )
+        if datasource and result:
+            datasource.ReleaseResultSet(result)
 
+        result = datasource.ExecuteSQL(query.SELECT__DOLT_STATUS)
         try:
             if result is not None:
                 for feature in result:
-                    table_name = feature.GetFieldAsString("table_name")
-                    status = feature.GetFieldAsString("status")
-                    yield GeoVCSChange(table_name, status)
+                    yield GeoVCSChange(
+                        feature.GetFieldAsString("table_name"),
+                        feature.GetFieldAsString("status"),
+                    )
         finally:
             if datasource and result:
                 datasource.ReleaseResultSet(result)
@@ -399,6 +418,12 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
             raise RuntimeError("No connection provided")
 
         datasource = ogr.Open(self._connection.ogr_connection_string)
+        result = datasource.ExecuteSQL(
+            query.CALL__DOLT_CHECKOUT.substitute(branch=self._connection.branch)
+        )
+        if datasource and result:
+            datasource.ReleaseResultSet(result)
+
         result = datasource.ExecuteSQL(
             query.CALL__DOLT_COMMIT_HASH_OUT.substitute(message=message)
         )
@@ -424,6 +449,12 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
 
         datasource = ogr.Open(self._connection.ogr_connection_string)
         result = datasource.ExecuteSQL(
+            query.CALL__DOLT_CHECKOUT.substitute(branch=self._connection.branch)
+        )
+        if datasource and result:
+            datasource.ReleaseResultSet(result)
+
+        result = datasource.ExecuteSQL(
             query.CALL__DOLT_BRANCH.substitute(branch=branch)
         )
         if datasource and result:
@@ -441,6 +472,7 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
         )
         if datasource and result:
             datasource.ReleaseResultSet(result)
+
         if datasource:
             datasource = None
 
