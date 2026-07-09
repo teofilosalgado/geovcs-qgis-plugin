@@ -391,7 +391,6 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
         if not self._connection:
             raise RuntimeError("No connection provided")
 
-        changes: list[GeoVCSChange] = []
         datasource = ogr.Open(self._connection.ogr_connection_string)
         result = datasource.ExecuteSQL(
             query.CALL__DOLT_CHECKOUT.substitute(branch=self._connection.branch)
