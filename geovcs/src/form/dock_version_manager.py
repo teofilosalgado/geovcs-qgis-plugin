@@ -43,10 +43,10 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
         self.button_refresh_changes.clicked.connect(self.refresh_changes)
         self.button_refresh_branches.clicked.connect(self.refresh_branches)
 
-        # TODO
-        self.edit_connection.setText(
-            f"{GeoVCSConnectionManager().database}@{GeoVCSConnectionManager().host}"
-        )
+        if GeoVCSConnectionManager().is_connected:
+            self.edit_connection.setText(
+                f"{GeoVCSConnectionManager().database}@{GeoVCSConnectionManager().host}"
+            )
 
         QgsProject.instance().layersAdded.connect(self.on_layers_added)
         iface.projectRead.connect(self.on_project_read)
@@ -73,6 +73,7 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
             Qgis.MessageLevel.Success,
         )
         self._configure_layers(layers)
+        self._update_branches()
         self._update_changes()
 
     def on_project_read(self):
@@ -197,6 +198,10 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
     def _update_branches(self):
         if not GeoVCSConnectionManager().is_connected:
             return
+
+        self.edit_connection.setText(
+            f"{GeoVCSConnectionManager().database}@{GeoVCSConnectionManager().host}"
+        )
 
         try:
             self.combo_branches.currentTextChanged.disconnect()

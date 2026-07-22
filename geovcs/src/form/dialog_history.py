@@ -49,7 +49,7 @@ class GeoVCSDialogHistory(QDialog, FORM_CLASS):
                 path_parts[-1],
                 branch.hash[:8],
                 "Yes" if branch.dirty else "No",
-                branch.latest_author_date,
+                branch.latest_author_date[:-4],
                 branch.latest_author,
             ]
 
@@ -103,14 +103,14 @@ class GeoVCSDialogHistory(QDialog, FORM_CLASS):
             self.table_commits.model().clear()
 
         model_commits = QStandardItemModel()
-        model_commits.setHorizontalHeaderLabels(["Hash", "Date", "Author", "Message"])
+        model_commits.setHorizontalHeaderLabels(["Date", "Author", "Message", "Hash"])
         for log in GeoVCSConnectionManager().get_logs(branch):
             model_commits.appendRow(
                 [
-                    QStandardItem(log.commit_hash[:8]),
-                    QStandardItem(log.date),
+                    QStandardItem(log.date[:-4]),
                     QStandardItem(log.committer),
                     QStandardItem(log.message),
+                    QStandardItem(log.commit_hash[:8]),
                 ]
             )
         self.table_commits.setModel(model_commits)

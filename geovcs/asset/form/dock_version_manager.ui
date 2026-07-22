@@ -87,7 +87,7 @@
            </sizepolicy>
           </property>
           <property name="toolTip">
-           <string>Create and switch to new branch based on the current one.</string>
+           <string>Create and switch to a new branch based on the current one.</string>
           </property>
           <property name="text">
            <string/>
