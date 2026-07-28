@@ -25,10 +25,15 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
         self.button_create_branch.setIcon(
             QgsApplication.getThemeIcon("/mActionAdd.svg")
         )
-        self.button_refresh_changes.setIcon(
+
+        self.button_refresh_branches.setIcon(
             QgsApplication.getThemeIcon("/mActionRefresh.svg")
         )
-        self.button_refresh_branches.setIcon(
+        self.button_merge_branch.setIcon(
+            QgsApplication.getThemeIcon("/mIconConnect.svg")
+        )
+
+        self.button_refresh_changes.setIcon(
             QgsApplication.getThemeIcon("/mActionRefresh.svg")
         )
 

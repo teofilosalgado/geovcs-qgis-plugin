@@ -94,6 +94,16 @@
           </property>
          </widget>
         </item>
+        <item>
+         <widget class="QPushButton" name="button_merge_branch">
+          <property name="toolTip">
+           <string>Select a target branch to bring changes to the current branch.</string>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+         </widget>
+        </item>
        </layout>
       </item>
      </layout>
