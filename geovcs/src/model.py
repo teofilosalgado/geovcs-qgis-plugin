@@ -1,8 +1,9 @@
 import os
 import posixpath
+from collections.abc import Generator
 from dataclasses import asdict, dataclass
 from functools import cached_property
-from typing import Any, Generator
+from typing import Any
 
 from osgeo import ogr
 from osgeo.ogr import Layer
@@ -168,9 +169,7 @@ class GeoVCSSettings:
 
         has_groups = len(child_keys) > 0 or len(child_groups) > 0
 
-        if has_value or has_groups:
-            return True
-        return False
+        return bool(has_value or has_groups)
 
     @staticmethod
     def remove(key: str):
@@ -360,7 +359,7 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
                         hash=feature.GetField("hash"),
                         latest_author=feature.GetField("latest_author"),
                         latest_author_date=feature.GetField("latest_author_date"),
-                        dirty=True if feature.GetField("dirty") else False,
+                        dirty=bool(feature.GetField("dirty")),
                     )
         finally:
             if datasource and result:
@@ -454,7 +453,26 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
             datasource.ReleaseResultSet(result)
 
         result = datasource.ExecuteSQL(
-            query.CALL__DOLT_BRANCH.substitute(branch=branch)
+            query.CALL__DOLT_CREATE_BRANCH.substitute(branch=branch)
+        )
+        if datasource and result:
+            datasource.ReleaseResultSet(result)
+        if datasource:
+            datasource = None
+
+    def delete_branch(self, branch: str):
+        if not self._connection:
+            raise RuntimeError("No connection provided")
+
+        datasource = ogr.Open(self._connection.ogr_connection_string)
+        result = datasource.ExecuteSQL(
+            query.CALL__DOLT_CHECKOUT.substitute(branch=self._connection.branch)
+        )
+        if datasource and result:
+            datasource.ReleaseResultSet(result)
+
+        result = datasource.ExecuteSQL(
+            query.CALL__DOLT_DELETE_BRANCH.substitute(branch=branch)
         )
         if datasource and result:
             datasource.ReleaseResultSet(result)

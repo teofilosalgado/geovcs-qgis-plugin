@@ -37,10 +37,17 @@ SELECT__HASH = """
     SELECT @hash
 """
 
-CALL__DOLT_BRANCH = Template(
+CALL__DOLT_CREATE_BRANCH = Template(
     # sql
     """
     CALL DOLT_BRANCH('$branch')
+"""
+)
+
+CALL__DOLT_DELETE_BRANCH = Template(
+    # sql
+    """
+    CALL DOLT_BRANCH('-D', '$branch')
 """
 )
 
