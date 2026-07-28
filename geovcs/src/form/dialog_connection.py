@@ -1,12 +1,12 @@
 import os
 
-from qgis.core import Qgis, QgsMessageLog
+from qgis.core import Qgis
 from qgis.gui import QgsAuthSettingsWidget
 from qgis.PyQt import uic
 from qgis.PyQt.QtGui import QIntValidator
 from qgis.PyQt.QtWidgets import QDialog, QMessageBox
 from qgis.utils import iface
-
+import traceback
 from geovcs.src.constant import FORM_DIRECTORY_PATH
 from geovcs.src.model import GeoVCSConnection, GeoVCSConnectionManager
 
@@ -89,8 +89,8 @@ class GeoVCSDialogConnection(QDialog, FORM_CLASS):
         except Exception as e:
             QMessageBox.critical(
                 self,
-                "Connection Error",
-                f"Check your credentials and server availability: {e}.",
+                "Connection Exception",
+                f"Exception while connecting to server: {type(e).__name__}\nCheck if your database contains at least one feature class.",
             )
             return False
         return True
