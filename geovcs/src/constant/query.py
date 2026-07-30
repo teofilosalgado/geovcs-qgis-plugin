@@ -59,7 +59,7 @@ CALL__DOLT_CHECKOUT = Template(
 """
 )
 
-SELECT__DOLT_LOG = Template(
+SELECT__DOLT_LOG_BRANCH = Template(
     # sql
     """
     SELECT
@@ -68,6 +68,25 @@ SELECT__DOLT_LOG = Template(
         email,
         date,
         message
-    FROM dolt_log('$branch')
+    FROM
+        dolt_log('$branch')
+    ORDER BY
+        date DESC
+"""
+)
+
+SELECT__DOLT_LOG_DELTA = Template(
+    # sql
+    """
+    SELECT
+        commit_hash,
+        committer,
+        email,
+        date,
+        message
+    FROM
+        dolt_log('$source_branch..$target_branch')
+    ORDER BY
+        date DESC
 """
 )

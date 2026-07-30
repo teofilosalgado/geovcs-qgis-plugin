@@ -11,6 +11,7 @@ from qgis.core import (
     Qgis,
     QgsApplication,
     QgsAuthMethodConfig,
+    QgsMessageLog,
     QgsSettings,
 )
 
@@ -312,7 +313,9 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
             GeoVCSSettings.remove(SETTINGS_CONNECTION_KEY)
             os.environ.pop("MYSQL_PWD", None)
 
-    def get_logs(self, branch: str) -> Generator[GeoVCSLog, None, None]:
+    def get_logs(
+        self, target_branch: str, source_branch: str | None = None
+    ) -> Generator[GeoVCSLog, None, None]:
         if not self._connection:
             raise RuntimeError("No connection provided")
 
@@ -323,7 +326,19 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
         if datasource and result:
             datasource.ReleaseResultSet(result)
 
-        result = datasource.ExecuteSQL(query.SELECT__DOLT_LOG.substitute(branch=branch))
+        sql = (
+            query.SELECT__DOLT_LOG_BRANCH.substitute(branch=target_branch)
+            if not source_branch
+            else query.SELECT__DOLT_LOG_DELTA.substitute(
+                source_branch=target_branch, target_branch=source_branch
+            )
+        )
+        QgsMessageLog.logMessage(
+            f"SQL: {sql}",
+            "GeoVCS",
+            Qgis.MessageLevel.Success,
+        )
+        result = datasource.ExecuteSQL(sql)
         try:
             if result is not None:
                 for feature in result:
