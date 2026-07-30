@@ -5,11 +5,11 @@ from qgis.core import Qgis, QgsApplication, QgsMessageLog, QgsProject
 from qgis.PyQt import uic
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QFont, QStandardItem, QStandardItemModel
-from qgis.PyQt.QtWidgets import QDockWidget
+from qgis.PyQt.QtWidgets import QDialog, QDockWidget
 from qgis.utils import iface
 
 from geovcs.src.constant import FORM_DIRECTORY_PATH, regex
-from geovcs.src.form import GeoVCSDialogCreateBranch
+from geovcs.src.form import GeoVCSDialogCreateBranch, GeoVCSDialogMergeBranch
 from geovcs.src.model import GeoVCSConnectionManager
 
 FORM_FILE = os.path.join(FORM_DIRECTORY_PATH, "dock_version_manager.ui")
@@ -47,6 +47,7 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
         self.button_commit.clicked.connect(self.commit)
         self.button_refresh_changes.clicked.connect(self.refresh_changes)
         self.button_refresh_branches.clicked.connect(self.refresh_branches)
+        self.button_merge_branch.clicked.connect(self.merge_branch)
 
         if GeoVCSConnectionManager().is_connected:
             self.edit_connection.setText(
@@ -232,3 +233,8 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
             "GeoVCS",
             Qgis.MessageLevel.Success,
         )
+
+    def merge_branch(self):
+        if GeoVCSDialogMergeBranch().exec() != QDialog.DialogCode.Accepted:
+            return
+        self.refresh_branches()
