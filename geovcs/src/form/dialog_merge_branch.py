@@ -2,6 +2,7 @@ import os
 
 from qgis.core import Qgis, QgsMessageLog
 from qgis.PyQt import uic
+from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QStandardItem, QStandardItemModel
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
@@ -79,19 +80,21 @@ class GeoVCSDialogMergeBranch(QDialog, FORM_CLASS):
             self.table_commits.model().clear()
 
         model_commits = QStandardItemModel()
-        model_commits.setHorizontalHeaderLabels(["Date", "Author", "Message", "Hash"])
+        model_commits.setHorizontalHeaderLabels(["Date", "Author", "Hash", "Message"])
         for log in GeoVCSConnectionManager().get_logs(
             target_branch,
             source_branch,
         ):
+            hash_item = QStandardItem(log.commit_hash[:8])
+            hash_item.setData(log.commit_hash, Qt.ItemDataRole.UserRole)
             model_commits.appendRow(
                 [
                     QStandardItem(log.date[:-4]),
                     QStandardItem(log.committer),
-                    QStandardItem(log.commit_hash[:8]),
+                    hash_item,
                     QStandardItem(log.message),
                 ]
             )
         self.table_commits.setModel(model_commits)
-        self.table_commits.horizontalHeader().setStretchLastSection(True)
         self.table_commits.resizeColumnsToContents()
+        self.table_commits.horizontalHeader().setStretchLastSection(True)

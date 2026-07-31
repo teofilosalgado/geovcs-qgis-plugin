@@ -3,7 +3,7 @@ import os
 from qgis.PyQt import uic
 from qgis.PyQt.QtCore import QRegularExpression
 from qgis.PyQt.QtGui import QRegularExpressionValidator
-from qgis.PyQt.QtWidgets import QDialog, QLabel, QLineEdit, QVBoxLayout
+from qgis.PyQt.QtWidgets import QDialog
 
 from geovcs.src.constant import FORM_DIRECTORY_PATH
 
