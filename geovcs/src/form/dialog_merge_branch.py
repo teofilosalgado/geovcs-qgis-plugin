@@ -24,6 +24,12 @@ class GeoVCSDialogMergeBranch(QDialog, FORM_CLASS):
 
         self.table_commits.setWordWrap(False)
         self.table_commits.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table_commits.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.table_commits.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
 
         self.combo_destination_branch.setEnabled(False)
         self.combo_destination_branch.clear()
@@ -98,3 +104,23 @@ class GeoVCSDialogMergeBranch(QDialog, FORM_CLASS):
         self.table_commits.setModel(model_commits)
         self.table_commits.resizeColumnsToContents()
         self.table_commits.horizontalHeader().setStretchLastSection(True)
+        self.table_commits.selectionModel().currentRowChanged.connect(self.get_changes)
+        QgsMessageLog.logMessage(
+            f"Updated commits from branch '{source_branch}'",
+            "GeoVCS",
+            Qgis.MessageLevel.Success,
+        )
+
+    def get_changes(self, current, previous):
+        if not current.isValid():
+            return
+
+        commit = self.table_commits.model().data(
+            self.table_commits.model().index(current.row(), 2),
+            Qt.ItemDataRole.UserRole,
+        )
+        QgsMessageLog.logMessage(
+            f"Updated changes from commit '{commit}'",
+            "GeoVCS",
+            Qgis.MessageLevel.Success,
+        )

@@ -11,7 +11,6 @@ from qgis.core import (
     Qgis,
     QgsApplication,
     QgsAuthMethodConfig,
-    QgsMessageLog,
     QgsSettings,
 )
 
@@ -332,11 +331,6 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
             else query.SELECT__DOLT_LOG_DELTA.substitute(
                 source_branch=target_branch, target_branch=source_branch
             )
-        )
-        QgsMessageLog.logMessage(
-            f"SQL: {sql}",
-            "GeoVCS",
-            Qgis.MessageLevel.Success,
         )
         result = datasource.ExecuteSQL(sql)
         try:
