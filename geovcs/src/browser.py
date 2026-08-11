@@ -5,13 +5,14 @@ from qgis.core import (
     Qgis,
     QgsApplication,
     QgsConnectionsRootItem,
+    QgsDataCollectionItem,
     QgsDataItem,
     QgsDataItemProvider,
     QgsLayerItem,
     QgsMessageLog,
 )
 from qgis.gui import QgsDataItemGuiProvider
-from qgis.PyQt.QtWidgets import QAction, QDialog  # type: ignore
+from qgis.PyQt.QtWidgets import QAction, QDialog
 from qgis.utils import iface
 
 from geovcs.src.constant import PROVIDER_KEY
@@ -74,6 +75,70 @@ class GeoVCSLayerItem(QgsLayerItem):
             return Qgis.BrowserLayerType.NoType
 
 
+class GeoVCSLayerGroupItem(QgsDataCollectionItem):
+    def __init__(self, parent: QgsDataItem, path: str):
+        super().__init__(parent, "Layers", path, PROVIDER_KEY)
+        self.setCapabilitiesV2(Qgis.BrowserItemCapability.Fertile)
+        self.setIcon(QgsApplication.getThemeIcon("/dbmanager.svg"))
+
+    def createChildren(self) -> list[GeoVCSLayerItem]:  # type: ignore
+        self.setState(Qgis.BrowserItemState.Populating)
+        items: list[GeoVCSLayerItem] = []
+
+        for layer in GeoVCSConnectionManager().get_layers():
+            item = GeoVCSLayerItem(
+                self,
+                GeoVCSLayer(
+                    posixpath.join(self.path(), layer.GetName()),
+                    layer.GetName(),
+                    layer.GetGeometryColumn(),
+                    layer.GetFIDColumn(),
+                    layer.GetGeomType(),
+                ),
+            )
+
+            items.append(item)
+            QgsMessageLog.logMessage(
+                f"Layer '{item.geovcs_layer.name}' of type '{item.geovcs_layer.layer_type.name}' loaded from '{item.geovcs_layer.uri}'",  # type: ignore
+                "GeoVCS",
+                Qgis.MessageLevel.Success,
+            )
+
+        self.setState(Qgis.BrowserItemState.Populated)
+        return items
+
+
+class GeoVCSProjectItem(QgsDataItem):
+    def __init__(self, parent: QgsDataItem, name: str, path: str):
+        super().__init__(Qgis.BrowserItemType.Custom, parent, name, path, PROVIDER_KEY)
+
+        self.setIcon(QgsApplication.getThemeIcon("/mIconQgsProjectFile.svg"))
+
+        self.setCapabilitiesV2(Qgis.BrowserItemCapability.NoCapabilities)
+        self.setState(Qgis.BrowserItemState.Populated)
+
+    def hasChildren(self):
+        return False
+
+
+class GeoVCSProjectGroupItem(QgsDataCollectionItem):
+    def __init__(self, parent: QgsDataItem, path: str):
+        super().__init__(parent, "Projects", path, PROVIDER_KEY)
+        self.setCapabilitiesV2(Qgis.BrowserItemCapability.Fertile)
+        self.setIcon(QgsApplication.getThemeIcon("/mIconFolderProject.svg"))
+
+    def createChildren(self) -> list[QgsDataItem]:  # type: ignore
+        self.setState(Qgis.BrowserItemState.Populating)
+
+        dummy_name = "Water"
+        dummy_path = posixpath.join(self.path(), dummy_name)
+        dummy_item = GeoVCSProjectItem(self, dummy_name, dummy_path)
+
+        self.setState(Qgis.BrowserItemState.Populated)
+
+        return [dummy_item]
+
+
 class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
     def __init__(self, parent):
         super().__init__(parent, PROVIDER_KEY, f"/{PROVIDER_KEY}", PROVIDER_KEY)
@@ -103,7 +168,7 @@ class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
     def depopulate(self) -> None:
         return super().depopulate()
 
-    def createChildren(self) -> list[GeoVCSLayerItem]:  # type: ignore
+    def createChildren(self) -> list[QgsDataItem]:  # type: ignore
         self._update_name()
 
         if not GeoVCSConnectionManager().is_connected:
@@ -111,27 +176,16 @@ class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
             return []
 
         self.setState(Qgis.BrowserItemState.Populating)
-        items: list[GeoVCSLayerItem] = []
-        for layer in GeoVCSConnectionManager().get_layers():
-            item = GeoVCSLayerItem(
-                self,
-                GeoVCSLayer(
-                    posixpath.join(self.path(), layer.GetName()),
-                    layer.GetName(),
-                    layer.GetGeometryColumn(),
-                    layer.GetFIDColumn(),
-                    layer.GetGeomType(),
-                ),
-            )
 
-            items.append(item)
-            QgsMessageLog.logMessage(
-                f"Layer '{item.geovcs_layer.name}' of type '{item.geovcs_layer.layer_type.name}' loaded from '{item.geovcs_layer.uri}'",  # type: ignore
-                "GeoVCS",
-                Qgis.MessageLevel.Success,
-            )
+        group_layers_path = posixpath.join(self.path(), "layers")
+        group_layers_item = GeoVCSLayerGroupItem(self, group_layers_path)
+
+        group_projects_path = posixpath.join(self.path(), "projects")
+        group_projects_item = GeoVCSProjectGroupItem(self, group_projects_path)
+
         self.setState(Qgis.BrowserItemState.Populated)
-        return items
+
+        return [group_layers_item, group_projects_item]
 
 
 class GeoVCSDataItemProvider(QgsDataItemProvider):
