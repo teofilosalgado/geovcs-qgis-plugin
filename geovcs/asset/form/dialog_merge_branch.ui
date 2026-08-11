@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>900</width>
-    <height>450</height>
+    <width>1280</width>
+    <height>650</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -120,7 +120,26 @@
         </widget>
        </item>
        <item>
-        <widget class="QTableView" name="table_changes"/>
+        <widget class="QTreeWidget" name="tree_changes">
+         <property name="columnCount">
+          <number>3</number>
+         </property>
+         <column>
+          <property name="text">
+           <string notr="true">1</string>
+          </property>
+         </column>
+         <column>
+          <property name="text">
+           <string notr="true">2</string>
+          </property>
+         </column>
+         <column>
+          <property name="text">
+           <string notr="true">3</string>
+          </property>
+         </column>
+        </widget>
        </item>
       </layout>
      </widget>

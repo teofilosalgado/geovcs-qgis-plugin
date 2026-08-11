@@ -2,6 +2,7 @@ import os
 import posixpath
 from collections.abc import Generator
 from dataclasses import asdict, dataclass
+from enum import StrEnum
 from functools import cached_property
 from typing import Any
 
@@ -19,6 +20,32 @@ from geovcs.src.constant import (
     SETTINGS_CONNECTION_KEY,
     query,
 )
+
+
+class GeoVCSDeltaAction(StrEnum):
+    ADDED = "added"
+    MODIFIED = "modified"
+    REMOVED = "removed"
+
+
+@dataclass
+class GeoVCSDeltaAttribute:
+    name: str
+    from_value: Any
+    to_value: Any
+
+
+@dataclass
+class GeoVCSDeltaFeature:
+    objectid: int
+    action: GeoVCSDeltaAction
+    attribute_deltas: list[GeoVCSDeltaAttribute]
+
+
+@dataclass
+class GeoVCSDiff:
+    table_name: str
+    feature_deltas: list[GeoVCSDeltaFeature]
 
 
 @dataclass
@@ -419,6 +446,105 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
                 datasource.ReleaseResultSet(result)
             if datasource:
                 datasource = None
+
+    def get_diffs(self, commit: str) -> Generator[GeoVCSDiff, None, None]:
+        if not self._connection:
+            raise RuntimeError("No connection provided")
+
+        datasource = ogr.Open(self._connection.ogr_connection_string)
+        result = datasource.ExecuteSQL(
+            query.CALL__DOLT_CHECKOUT.substitute(branch=self._connection.branch)
+        )
+        if datasource and result:
+            datasource.ReleaseResultSet(result)
+
+        # Fetch statistics to discover which tables were modified
+        statistics_layer = datasource.ExecuteSQL(
+            query.SELECT__DOLT_DIFF_STAT.substitute(commit=commit)
+        )
+
+        if not statistics_layer:
+            return
+
+        # Extract table names and release the query result from memory
+        table_names = [feature.GetField("table_name") for feature in statistics_layer]
+        datasource.ReleaseResultSet(statistics_layer)
+
+        for table_name in table_names:
+            diff_layer = datasource.ExecuteSQL(
+                query.SELECT__DOLT_DIFF.substitute(commit=commit, table_name=table_name)
+            )
+            if not diff_layer:
+                continue
+
+            # Map column definitions
+            layer_definition = diff_layer.GetLayerDefn()
+            field_names = [
+                layer_definition.GetFieldDefn(index).GetName()
+                for index in range(layer_definition.GetFieldCount())
+            ]
+
+            # Identify base columns (removing to_ and from_ prefixes)
+            base_field_names = set()
+            for field_name in field_names:
+                if field_name.startswith("from_") and field_name not in (
+                    "from_commit",
+                    "from_data_length",
+                ):
+                    base_field_names.add(field_name.replace("from_", "", 1))
+                elif field_name.startswith("to_") and field_name not in (
+                    "to_commit",
+                    "to_data_length",
+                ):
+                    base_field_names.add(field_name.replace("to_", "", 1))
+
+            feature_deltas = []
+
+            # Iterate over each modified feature (record)
+            for feature in diff_layer:
+                action_type = feature.GetField("diff_type")
+
+                # Identify the OBJECTID handling additions or deletions
+                object_identifier = feature.GetField("to_OBJECTID")
+                if object_identifier is None:
+                    object_identifier = feature.GetField("from_OBJECTID")
+
+                attribute_deltas = []
+
+                for base_field_name in base_field_names:
+                    previous_value = feature.GetField(f"from_{base_field_name}")
+                    current_value = feature.GetField(f"to_{base_field_name}")
+
+                    # Filter columns that did not change
+                    if previous_value == current_value:
+                        continue
+                    if base_field_name in ["commit_date", "objectid"]:
+                        continue
+
+                    attribute_delta = GeoVCSDeltaAttribute(
+                        name=base_field_name,
+                        from_value=previous_value,
+                        to_value=current_value,
+                    )
+                    attribute_deltas.append(attribute_delta)
+
+                # The feature is only added if the OBJECTID is valid and processed
+                feature_delta = GeoVCSDeltaFeature(
+                    objectid=object_identifier,
+                    action=GeoVCSDeltaAction(action_type),
+                    attribute_deltas=sorted(
+                        attribute_deltas, key=lambda item: item.name
+                    ),
+                )
+                feature_deltas.append(feature_delta)
+
+            datasource.ReleaseResultSet(diff_layer)
+
+            # Yield one table at a time
+            yield GeoVCSDiff(
+                table_name=table_name,
+                feature_deltas=sorted(feature_deltas, key=lambda item: item.objectid),
+            )
 
     def add_all_and_commit(self, message: str) -> str | None:
         if not self._connection:

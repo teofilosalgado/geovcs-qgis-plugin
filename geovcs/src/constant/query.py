@@ -90,3 +90,23 @@ SELECT__DOLT_LOG_DELTA = Template(
         date DESC
 """
 )
+
+SELECT__DOLT_DIFF_STAT = Template(
+    # sql
+    """
+    SELECT
+        table_name
+    FROM
+        DOLT_DIFF_STAT('$commit~', '$commit')
+"""
+)
+
+SELECT__DOLT_DIFF = Template(
+    # sql
+    """
+    SELECT
+        *
+    FROM
+        DOLT_DIFF('$commit~', '$commit', '$table_name')
+"""
+)
