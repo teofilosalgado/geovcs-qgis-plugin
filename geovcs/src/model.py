@@ -12,6 +12,7 @@ from qgis.core import (
     Qgis,
     QgsApplication,
     QgsAuthMethodConfig,
+    QgsMapLayer,
     QgsSettings,
 )
 
@@ -179,6 +180,10 @@ class GeoVCSLayer:
             return Qgis.BrowserLayerType.Table
         else:
             return Qgis.BrowserLayerType.NoType
+
+    @staticmethod
+    def is_geovcs_layer(layer: QgsMapLayer) -> bool:
+        return layer.providerType() == "ogr" and layer.source().startswith("MySQL:")
 
 
 class GeoVCSSettings:

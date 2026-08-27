@@ -1,7 +1,7 @@
 import os
 import re
 
-from qgis.core import Qgis, QgsApplication, QgsMessageLog, QgsProject
+from qgis.core import Qgis, QgsApplication, QgsMapLayer, QgsMessageLog, QgsProject
 from qgis.PyQt import uic
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QFont, QStandardItem, QStandardItemModel
@@ -10,7 +10,7 @@ from qgis.utils import iface
 
 from geovcs.src.constant import FORM_DIRECTORY_PATH, regex
 from geovcs.src.form import GeoVCSDialogCreateBranch, GeoVCSDialogMergeBranch
-from geovcs.src.model import GeoVCSConnectionManager
+from geovcs.src.model import GeoVCSConnectionManager, GeoVCSLayer
 
 FORM_FILE = os.path.join(FORM_DIRECTORY_PATH, "dock_version_manager.ui")
 
@@ -57,7 +57,10 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
         QgsProject.instance().layersAdded.connect(self.on_layers_added)
         iface.projectRead.connect(self.on_project_read)
 
-    def change_branch(self, branch):
+    def change_branch(self, branch: str):
+        if not GeoVCSConnectionManager().is_connected:
+            return
+
         if not branch:
             return
 
@@ -72,7 +75,14 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
         self._update_branches()
         self._update_changes()
 
-    def on_layers_added(self, layers):
+    def on_layers_added(self, layers: list[QgsMapLayer]):
+        if not GeoVCSConnectionManager().is_connected:
+            return
+
+        has_geovcs_layers = any(GeoVCSLayer.is_geovcs_layer(layer) for layer in layers)
+        if not has_geovcs_layers:
+            return
+
         QgsMessageLog.logMessage(
             f"Added '{len(layers)}' layer(s) to current project",
             "GeoVCS",
@@ -83,16 +93,17 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
         self._update_changes()
 
     def on_project_read(self):
-        QgsMessageLog.logMessage(
-            "Project is ready",
-            "GeoVCS",
-            Qgis.MessageLevel.Success,
-        )
+        if not GeoVCSConnectionManager().is_connected:
+            return
+
         self._update_branches()
         self._update_changes()
 
     def create_branch(self):
-        current_branch = self.combo_branches.currentText().strip()
+        if not GeoVCSConnectionManager().is_connected:
+            return
+
+        current_branch = str(self.combo_branches.currentText().strip())
         new_branch, ok = GeoVCSDialogCreateBranch().execute(current_branch)
         if not ok or not new_branch:
             return
@@ -107,9 +118,15 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
         self.change_branch(final_branch)
 
     def refresh_changes(self):
+        if not GeoVCSConnectionManager().is_connected:
+            return
+
         self._update_changes()
 
     def refresh_branches(self):
+        if not GeoVCSConnectionManager().is_connected:
+            return
+
         self._update_branches()
         self._update_changes()
 
@@ -117,7 +134,7 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
         if not GeoVCSConnectionManager().is_connected:
             return
 
-        message = self.edit_message.toPlainText().strip()
+        message = str(self.edit_message.toPlainText().strip())
         if not message:
             return
 
@@ -133,12 +150,12 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
         self.edit_message.clear()
         self.setEnabled(True)
 
-    def _configure_layers(self, layers):
+    def _configure_layers(self, layers: list[QgsMapLayer]):
         if not GeoVCSConnectionManager().is_connected:
             return
 
         for layer in layers:
-            if layer.providerType() != "ogr" or not layer.source().startswith("MySQL:"):
+            if not GeoVCSLayer.is_geovcs_layer(layer):
                 continue
 
             # Update data source
@@ -178,28 +195,22 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
         if not GeoVCSConnectionManager().is_connected:
             return
 
-        has_geovcs_layers = any(
-            layer.providerType() == "ogr" and layer.source().startswith("MySQL:")
-            for layer in QgsProject.instance().mapLayers().values()
-        )
+        self.setEnabled(True)
+        self.model_status.removeRows(0, self.model_status.rowCount())
+        for change in GeoVCSConnectionManager().get_changes():
+            status_item = QStandardItem(change.status)
+            status_item.setEditable(False)
 
-        if has_geovcs_layers:
-            self.setEnabled(True)
-            self.model_status.removeRows(0, self.model_status.rowCount())
-            for change in GeoVCSConnectionManager().get_changes():
-                status_item = QStandardItem(change.status)
-                status_item.setEditable(False)
+            table_item = QStandardItem(change.table_name)
+            table_item.setEditable(False)
 
-                table_item = QStandardItem(change.table_name)
-                table_item.setEditable(False)
-
-                self.model_status.appendRow([status_item, table_item])
-                QgsMessageLog.logMessage(
-                    f"Received change '{change.table_name}' from '{GeoVCSConnectionManager().database}@{GeoVCSConnectionManager().host}' at '{GeoVCSConnectionManager().branch}'",
-                    "GeoVCS",
-                    Qgis.MessageLevel.Success,
-                )
-            self.table_status.setModel(self.model_status)
+            self.model_status.appendRow([status_item, table_item])
+            QgsMessageLog.logMessage(
+                f"Received change '{change.table_name}' from '{GeoVCSConnectionManager().database}@{GeoVCSConnectionManager().host}' at '{GeoVCSConnectionManager().branch}'",
+                "GeoVCS",
+                Qgis.MessageLevel.Success,
+            )
+        self.table_status.setModel(self.model_status)
 
     def _update_branches(self):
         if not GeoVCSConnectionManager().is_connected:
@@ -235,6 +246,9 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
         )
 
     def merge_branch(self):
+        if not GeoVCSConnectionManager().is_connected:
+            return
+
         if GeoVCSDialogMergeBranch().exec() != QDialog.DialogCode.Accepted:
             return
         self.refresh_branches()
