@@ -1,5 +1,6 @@
 import os
 import re
+from re import Match
 
 from qgis.core import Qgis, QgsApplication, QgsMapLayer, QgsMessageLog, QgsProject
 from qgis.PyQt import uic
@@ -10,7 +11,7 @@ from qgis.utils import iface
 
 from geovcs.src.constant import FORM_DIRECTORY_PATH, regex
 from geovcs.src.form import GeoVCSDialogCreateBranch, GeoVCSDialogMergeBranch
-from geovcs.src.model import GeoVCSConnectionManager, GeoVCSLayer
+from geovcs.src.model import GeoVCSConnectionManager
 
 FORM_FILE = os.path.join(FORM_DIRECTORY_PATH, "dock_version_manager.ui")
 
@@ -57,40 +58,11 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
         QgsProject.instance().layersAdded.connect(self.on_layers_added)
         iface.projectRead.connect(self.on_project_read)
 
-    def change_branch(self, branch: str):
-        if not GeoVCSConnectionManager().is_connected:
-            return
-
-        if not branch:
-            return
-
-        GeoVCSConnectionManager().checkout(branch)
-        iface.messageBar().pushMessage(  # type: ignore
-            "GeoVCS - Switched Branch",
-            f"Switched to branch '{branch}' successfully.",
-            Qgis.MessageLevel.Success,
-        )
-
-        self._configure_layers(QgsProject.instance().mapLayers().values())
-        self._update_branches()
-        self._update_changes()
-
     def on_layers_added(self, layers: list[QgsMapLayer]):
         if not GeoVCSConnectionManager().is_connected:
             return
 
-        has_geovcs_layers = any(GeoVCSLayer.is_geovcs_layer(layer) for layer in layers)
-        if not has_geovcs_layers:
-            return
-
-        QgsMessageLog.logMessage(
-            f"Added '{len(layers)}' layer(s) to current project",
-            "GeoVCS",
-            Qgis.MessageLevel.Success,
-        )
         self._configure_layers(layers)
-        self._update_branches()
-        self._update_changes()
 
     def on_project_read(self):
         if not GeoVCSConnectionManager().is_connected:
@@ -116,6 +88,30 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
             Qgis.MessageLevel.Success,
         )
         self.change_branch(final_branch)
+
+    def change_branch(self, branch: str):
+        if not GeoVCSConnectionManager().is_connected:
+            return
+
+        if not branch:
+            return
+
+        GeoVCSConnectionManager().checkout(branch)
+        iface.messageBar().pushMessage(  # type: ignore
+            "GeoVCS - Switched Branch",
+            f"Switched to branch '{branch}' successfully.",
+            Qgis.MessageLevel.Success,
+        )
+
+        self._configure_layers(QgsProject.instance().mapLayers().values())
+
+    def merge_branch(self):
+        if not GeoVCSConnectionManager().is_connected:
+            return
+
+        if GeoVCSDialogMergeBranch().exec() != QDialog.DialogCode.Accepted:
+            return
+        self.refresh_branches()
 
     def refresh_changes(self):
         if not GeoVCSConnectionManager().is_connected:
@@ -154,42 +150,49 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
         if not GeoVCSConnectionManager().is_connected:
             return
 
-        for layer in layers:
-            if not GeoVCSLayer.is_geovcs_layer(layer):
-                continue
-
-            # Update data source
-            match = re.search(regex.DATA_SOURCE, layer.source())
+        geovcs_layers: list[tuple[QgsMapLayer, Match[str]]] = []
+        for geovcs_layer in layers:
+            match = self._parse_geovcs_layer(geovcs_layer)
             if match:
-                geovcs_layer_branch = match.group("branch")
-                if (
-                    geovcs_layer_branch
-                    and GeoVCSConnectionManager().branch != geovcs_layer_branch
-                ):
-                    new_data_source = re.sub(
-                        regex.DATA_SOURCE,
-                        rf"\g<before>{GeoVCSConnectionManager().branch}\g<after>",
-                        layer.source(),
-                    )
-                    QgsMessageLog.logMessage(
-                        f"Updated layer '{layer.name()}' datasource from '{layer.source()}' to '{new_data_source}'",
-                        "GeoVCS",
-                        Qgis.MessageLevel.Success,
-                    )
-                    layer.setDataSource(new_data_source, layer.name(), "ogr")
+                geovcs_layers.append((geovcs_layer, match))
 
+        if not geovcs_layers:
+            return
+
+        for geovcs_layer, match in geovcs_layers:
             # Connect trigger after commit
             try:
-                layer.afterCommitChanges.disconnect(self._update_changes)
+                geovcs_layer.afterCommitChanges.disconnect(self._update_changes)
             except TypeError:
                 pass
 
-            layer.afterCommitChanges.connect(self._update_changes)
+            geovcs_layer.afterCommitChanges.connect(self._update_changes)
             QgsMessageLog.logMessage(
-                f"Layer '{layer.name()}' trigger 'afterCommitChanges' connected to 'self._update_changes' method",
+                f"Layer '{geovcs_layer.name()}' trigger 'afterCommitChanges' connected to 'self._update_changes' method",
                 "GeoVCS",
                 Qgis.MessageLevel.Success,
             )
+
+            # Update data source
+            geovcs_layer_branch = match.group("branch")
+            if (
+                geovcs_layer_branch
+                and GeoVCSConnectionManager().branch != geovcs_layer_branch
+            ):
+                new_data_source = re.sub(
+                    regex.DATA_SOURCE,
+                    rf"\g<before>{GeoVCSConnectionManager().branch}\g<after>",
+                    geovcs_layer.source(),
+                )
+                QgsMessageLog.logMessage(
+                    f"Updated layer '{geovcs_layer.name()}' datasource from '{geovcs_layer.source()}' to '{new_data_source}'",
+                    "GeoVCS",
+                    Qgis.MessageLevel.Success,
+                )
+                geovcs_layer.setDataSource(new_data_source, geovcs_layer.name(), "ogr")
+
+        self._update_branches()
+        self._update_changes()
 
     def _update_changes(self):
         if not GeoVCSConnectionManager().is_connected:
@@ -245,10 +248,5 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
             Qgis.MessageLevel.Success,
         )
 
-    def merge_branch(self):
-        if not GeoVCSConnectionManager().is_connected:
-            return
-
-        if GeoVCSDialogMergeBranch().exec() != QDialog.DialogCode.Accepted:
-            return
-        self.refresh_branches()
+    def _parse_geovcs_layer(self, layer: QgsMapLayer) -> re.Match[str] | None:
+        return re.search(regex.DATA_SOURCE, layer.source())

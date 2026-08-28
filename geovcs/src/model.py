@@ -12,7 +12,6 @@ from qgis.core import (
     Qgis,
     QgsApplication,
     QgsAuthMethodConfig,
-    QgsMapLayer,
     QgsSettings,
 )
 
@@ -181,10 +180,6 @@ class GeoVCSLayer:
         else:
             return Qgis.BrowserLayerType.NoType
 
-    @staticmethod
-    def is_geovcs_layer(layer: QgsMapLayer) -> bool:
-        return layer.providerType() == "ogr" and layer.source().startswith("MySQL:")
-
 
 class GeoVCSSettings:
     @staticmethod
@@ -283,18 +278,20 @@ class GeoVCSLog:
 class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
     def __init__(self) -> None:
         self._connection: GeoVCSConnection | None = None
+        self._is_connected: bool = False
         if GeoVCSSettings.key_exists(SETTINGS_CONNECTION_KEY):
             self._connection = GeoVCSSettings.read_object(
                 SETTINGS_CONNECTION_KEY,
                 GeoVCSConnection,
             )
+            self._is_connected = self._test_connection()
 
         if self._connection is not None and self._connection.password is not None:
             os.environ["MYSQL_PWD"] = self._connection.password
 
     @property
     def is_connected(self) -> bool:
-        return self._connection is not None
+        return self._is_connected
 
     @property
     def branch(self) -> str | None:
@@ -331,6 +328,16 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
         if self._connection:
             return self._connection.auth_config_id
         return None
+
+    def _test_connection(self) -> bool:
+        connection = self._connection
+        if not connection:
+            return False
+
+        try:
+            return connection.test()
+        except Exception:
+            return False
 
     def connect(self, connection: GeoVCSConnection):
         self._connection = connection
