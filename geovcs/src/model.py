@@ -4,9 +4,9 @@ from collections.abc import Generator
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 from functools import cached_property
-from typing import Any
+from typing import Any, ClassVar
 
-from osgeo import ogr
+from osgeo import gdal, ogr
 from osgeo.ogr import Layer
 from qgis.core import (
     Qgis,
@@ -237,13 +237,12 @@ class GeoVCSSettings:
         settings.beginGroup(base_key)
         groups = settings.childGroups()
 
-        for group in groups:
-            yield group
+        yield from groups
         settings.endGroup()
 
 
 class GeoVCSConnectionManagerMetaclass(type):
-    _instances = {}
+    _instances: ClassVar[dict[type[Any], Any]] = {}
 
     def __call__(cls, *args, **kwargs):
         if cls not in cls._instances:
@@ -284,7 +283,7 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
                 SETTINGS_CONNECTION_KEY,
                 GeoVCSConnection,
             )
-            self._is_connected = self._test_connection()
+            self._is_connected = self._connection.test()
 
         if self._connection is not None and self._connection.password is not None:
             os.environ["MYSQL_PWD"] = self._connection.password
@@ -329,15 +328,23 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
             return self._connection.auth_config_id
         return None
 
-    def _test_connection(self) -> bool:
-        connection = self._connection
-        if not connection:
-            return False
+    def _get_datasource(self) -> gdal.Dataset:
+        if not self._connection:
+            raise RuntimeError("No connection provided")
 
-        try:
-            return connection.test()
-        except Exception:
-            return False
+        datasource: gdal.Dataset | None = ogr.Open(
+            self._connection.ogr_connection_string
+        )
+        if not datasource:
+            raise RuntimeError("No datasource provided")
+
+        result = datasource.ExecuteSQL(
+            query.CALL__DOLT_CHECKOUT.substitute(branch=self.branch)
+        )
+        if datasource and result:
+            datasource.ReleaseResultSet(result)
+
+        return datasource
 
     def connect(self, connection: GeoVCSConnection):
         self._connection = connection
@@ -354,16 +361,7 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
     def get_logs(
         self, target_branch: str, source_branch: str | None = None
     ) -> Generator[GeoVCSLog, None, None]:
-        if not self._connection:
-            raise RuntimeError("No connection provided")
-
-        datasource = ogr.Open(self._connection.ogr_connection_string)
-        result = datasource.ExecuteSQL(
-            query.CALL__DOLT_CHECKOUT.substitute(branch=self._connection.branch)
-        )
-        if datasource and result:
-            datasource.ReleaseResultSet(result)
-
+        datasource = self._get_datasource()
         sql = (
             query.SELECT__DOLT_LOG_BRANCH.substitute(branch=target_branch)
             if not source_branch
@@ -388,15 +386,7 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
                 datasource = None
 
     def get_branches(self) -> Generator[GeoVCSBranch, None, None]:
-        if not self._connection:
-            raise RuntimeError("No connection provided")
-
-        datasource = ogr.Open(self._connection.ogr_connection_string)
-        result = datasource.ExecuteSQL(
-            query.CALL__DOLT_CHECKOUT.substitute(branch=self._connection.branch)
-        )
-        if datasource and result:
-            datasource.ReleaseResultSet(result)
+        datasource = self._get_datasource()
 
         result = datasource.ExecuteSQL(query.SELECT__DOLT_BRANCHES)
         try:
@@ -416,15 +406,7 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
                 datasource = None
 
     def get_layers(self) -> Generator[Layer, None, None]:
-        if not self._connection:
-            raise RuntimeError("No connection provided")
-
-        datasource = ogr.Open(self._connection.ogr_connection_string)
-        result = datasource.ExecuteSQL(
-            query.CALL__DOLT_CHECKOUT.substitute(branch=self._connection.branch)
-        )
-        if datasource and result:
-            datasource.ReleaseResultSet(result)
+        datasource = self._get_datasource()
 
         layer_count = datasource.GetLayerCount()
         try:
@@ -435,15 +417,7 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
                 datasource = None
 
     def get_changes(self) -> Generator[GeoVCSChange, None, None]:
-        if not self._connection:
-            raise RuntimeError("No connection provided")
-
-        datasource = ogr.Open(self._connection.ogr_connection_string)
-        result = datasource.ExecuteSQL(
-            query.CALL__DOLT_CHECKOUT.substitute(branch=self._connection.branch)
-        )
-        if datasource and result:
-            datasource.ReleaseResultSet(result)
+        datasource = self._get_datasource()
 
         result = datasource.ExecuteSQL(query.SELECT__DOLT_STATUS)
         try:
@@ -460,15 +434,7 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
                 datasource = None
 
     def get_diffs(self, commit: str) -> Generator[GeoVCSDiff, None, None]:
-        if not self._connection:
-            raise RuntimeError("No connection provided")
-
-        datasource = ogr.Open(self._connection.ogr_connection_string)
-        result = datasource.ExecuteSQL(
-            query.CALL__DOLT_CHECKOUT.substitute(branch=self._connection.branch)
-        )
-        if datasource and result:
-            datasource.ReleaseResultSet(result)
+        datasource = self._get_datasource()
 
         # Fetch statistics to discover which tables were modified
         statistics_layer = datasource.ExecuteSQL(
@@ -559,15 +525,7 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
             )
 
     def add_all_and_commit(self, message: str) -> str | None:
-        if not self._connection:
-            raise RuntimeError("No connection provided")
-
-        datasource = ogr.Open(self._connection.ogr_connection_string)
-        result = datasource.ExecuteSQL(
-            query.CALL__DOLT_CHECKOUT.substitute(branch=self._connection.branch)
-        )
-        if datasource and result:
-            datasource.ReleaseResultSet(result)
+        datasource = self._get_datasource()
 
         result = datasource.ExecuteSQL(
             query.CALL__DOLT_COMMIT_HASH_OUT.substitute(message=message)
@@ -589,15 +547,7 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
         return hash
 
     def create_branch(self, branch: str):
-        if not self._connection:
-            raise RuntimeError("No connection provided")
-
-        datasource = ogr.Open(self._connection.ogr_connection_string)
-        result = datasource.ExecuteSQL(
-            query.CALL__DOLT_CHECKOUT.substitute(branch=self._connection.branch)
-        )
-        if datasource and result:
-            datasource.ReleaseResultSet(result)
+        datasource = self._get_datasource()
 
         result = datasource.ExecuteSQL(
             query.CALL__DOLT_CREATE_BRANCH.substitute(branch=branch)
@@ -608,15 +558,7 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
             datasource = None
 
     def delete_branch(self, branch: str):
-        if not self._connection:
-            raise RuntimeError("No connection provided")
-
-        datasource = ogr.Open(self._connection.ogr_connection_string)
-        result = datasource.ExecuteSQL(
-            query.CALL__DOLT_CHECKOUT.substitute(branch=self._connection.branch)
-        )
-        if datasource and result:
-            datasource.ReleaseResultSet(result)
+        datasource = self._get_datasource()
 
         result = datasource.ExecuteSQL(
             query.CALL__DOLT_DELETE_BRANCH.substitute(branch=branch)

@@ -106,7 +106,14 @@
         </widget>
        </item>
        <item>
-        <widget class="QTableView" name="table_commits"/>
+        <widget class="QTableView" name="table_commits">
+         <property name="sizeAdjustPolicy">
+          <enum>QAbstractScrollArea::SizeAdjustPolicy::AdjustToContentsOnFirstShow</enum>
+         </property>
+         <attribute name="horizontalHeaderStretchLastSection">
+          <bool>true</bool>
+         </attribute>
+        </widget>
        </item>
       </layout>
      </widget>
@@ -155,7 +162,7 @@
       </widget>
      </item>
      <item>
-      <widget class="QDialogButtonBox" name="buttonBox">
+      <widget class="QDialogButtonBox" name="dialog_button_box">
        <property name="standardButtons">
         <set>QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok</set>
        </property>
@@ -165,17 +172,24 @@
    </item>
   </layout>
  </widget>
+ <tabstops>
+  <tabstop>combo_source_branch</tabstop>
+  <tabstop>combo_destination_branch</tabstop>
+  <tabstop>table_commits</tabstop>
+  <tabstop>tree_changes</tabstop>
+  <tabstop>check_delete_source_branch</tabstop>
+ </tabstops>
  <resources/>
  <connections>
   <connection>
-   <sender>buttonBox</sender>
+   <sender>dialog_button_box</sender>
    <signal>rejected()</signal>
    <receiver>Dialog</receiver>
    <slot>reject()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>610</x>
-     <y>390</y>
+     <x>872</x>
+     <y>552</y>
     </hint>
     <hint type="destinationlabel">
      <x>449</x>

@@ -4,7 +4,13 @@ from qgis.core import Qgis, QgsMessageLog
 from qgis.PyQt import uic
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QStandardItem, QStandardItemModel
-from qgis.PyQt.QtWidgets import QAbstractItemView, QDialog, QHeaderView, QTreeWidgetItem
+from qgis.PyQt.QtWidgets import (
+    QAbstractItemView,
+    QDialog,
+    QHeaderView,
+    QMessageBox,
+    QTreeWidgetItem,
+)
 
 from geovcs.src.constant import FORM_DIRECTORY_PATH
 from geovcs.src.model import GeoVCSConnectionManager, GeoVCSDeltaAction
@@ -17,6 +23,10 @@ FORM_CLASS, _ = uic.loadUiType(FORM_FILE)
 class GeoVCSDialogMergeBranch(QDialog, FORM_CLASS):
     def __init__(self, parent_path=None):
         super().__init__(parent_path)
+
+        self._target_branch: str | None = None
+        self._source_branch: str | None = None
+
         self.setupUi(self)
 
         self.splitter.setSizes([3, 4])
@@ -40,7 +50,26 @@ class GeoVCSDialogMergeBranch(QDialog, FORM_CLASS):
             ["Attribute", "Previous Value", "Current Value"]
         )
 
+        self.dialog_button_box.accepted.connect(self._accept)
+        self.dialog_button_box.rejected.connect(self.reject)
+
         self._update_source_branches()
+
+    def _accept(self):
+        if not self._source_branch or not self._target_branch:
+            return
+
+        self.setEnabled(False)
+        result = QMessageBox.question(
+            self,
+            "GeoVCS - Merge Branch",
+            f"Are you sure you want to merge the branch '{self._source_branch}' to '{self._target_branch}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if result == QMessageBox.StandardButton.Yes:
+            pass
+        self.setEnabled(True)
 
     def _update_source_branches(self):
         if not GeoVCSConnectionManager().is_connected:
@@ -64,14 +93,16 @@ class GeoVCSDialogMergeBranch(QDialog, FORM_CLASS):
                 continue
             self.combo_source_branch.insertItem(index + 1, branch.name)
 
-        self.combo_source_branch.currentTextChanged.connect(self.change_source_branch)
+        self.combo_source_branch.currentTextChanged.connect(
+            self.on_change_source_branch
+        )
         QgsMessageLog.logMessage(
             f"Updated branches from '{GeoVCSConnectionManager().database}@{GeoVCSConnectionManager().host}'",
             "GeoVCS",
             Qgis.MessageLevel.Success,
         )
 
-    def change_source_branch(self):
+    def on_change_source_branch(self):
         if self.combo_source_branch.currentIndex() == 0:
             if self.table_commits.model():
                 self.table_commits.model().clear()
@@ -86,18 +117,37 @@ class GeoVCSDialogMergeBranch(QDialog, FORM_CLASS):
         if not target_branch:
             return
 
+        self._target_branch = target_branch
+        self._source_branch = source_branch
+        self.setWindowTitle(
+            f"GeoVCS - Merge Branch '{source_branch}' > '{target_branch}'"
+        )
+
         self._update_commits(source_branch, target_branch)
 
     def _update_commits(self, source_branch: str, target_branch: str):
         if self.table_commits.model():
             self.table_commits.model().clear()
 
+        logs = list(
+            GeoVCSConnectionManager().get_logs(
+                target_branch,
+                source_branch,
+            )
+        )
+        QgsMessageLog.logMessage(
+            f"Got '{len(logs)}' commits between target branch '{target_branch}' and source branch '{source_branch}'",
+            "GeoVCS",
+            Qgis.MessageLevel.Success,
+        )
+
+        if not logs:
+            return
+
         model_commits = QStandardItemModel()
         model_commits.setHorizontalHeaderLabels(["Date", "Author", "Hash", "Message"])
-        for log in GeoVCSConnectionManager().get_logs(
-            target_branch,
-            source_branch,
-        ):
+
+        for log in logs:
             hash_item = QStandardItem(log.commit_hash[:8])
             hash_item.setData(log.commit_hash, Qt.ItemDataRole.UserRole)
             model_commits.appendRow(
@@ -109,16 +159,12 @@ class GeoVCSDialogMergeBranch(QDialog, FORM_CLASS):
                 ]
             )
         self.table_commits.setModel(model_commits)
-        self.table_commits.resizeColumnsToContents()
-        self.table_commits.horizontalHeader().setStretchLastSection(True)
-        self.table_commits.selectionModel().currentRowChanged.connect(self.get_changes)
-        QgsMessageLog.logMessage(
-            f"Updated commits from branch '{source_branch}'",
-            "GeoVCS",
-            Qgis.MessageLevel.Success,
+        self.table_commits.selectionModel().currentRowChanged.connect(
+            self.on_change_current_selected_commit
         )
+        self.table_commits.selectRow(0)
 
-    def get_changes(self, current, previous):
+    def on_change_current_selected_commit(self, current, previous):
         if not current.isValid():
             return
 
@@ -133,12 +179,10 @@ class GeoVCSDialogMergeBranch(QDialog, FORM_CLASS):
 
         table_diffs = GeoVCSConnectionManager().get_diffs(commit)
         for table_diff in table_diffs:
-            # --- Level 1: Table ---
             table_node = QTreeWidgetItem(self.tree_changes)
             table_node.setText(0, table_diff.table_name)
 
             for feature_delta in table_diff.feature_deltas:
-                # --- Level 2: Feature (OBJECTID) and Action ---
                 feature_node = QTreeWidgetItem(table_node)
 
                 action_icon = "❔"
@@ -155,7 +199,6 @@ class GeoVCSDialogMergeBranch(QDialog, FORM_CLASS):
                 )
 
                 for attribute_delta in feature_delta.attribute_deltas:
-                    # --- Level 3: Attribute Values ---
                     attribute_node = QTreeWidgetItem(feature_node)
                     attribute_node.setText(0, attribute_delta.name)
 
@@ -173,7 +216,6 @@ class GeoVCSDialogMergeBranch(QDialog, FORM_CLASS):
                     attribute_node.setText(1, previous_text)
                     attribute_node.setText(2, current_text)
 
-        # Automatically expand the Table and Features (Levels 1 and 2)
         self.tree_changes.expandToDepth(1)
         self.tree_changes.header().setSectionResizeMode(
             QHeaderView.ResizeMode.ResizeToContents
