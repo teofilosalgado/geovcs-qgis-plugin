@@ -6,7 +6,7 @@ from qgis.PyQt import uic
 from qgis.PyQt.QtGui import QIntValidator
 from qgis.PyQt.QtWidgets import QDialog, QMessageBox
 from qgis.utils import iface
-import traceback
+
 from geovcs.src.constant import FORM_DIRECTORY_PATH
 from geovcs.src.model import GeoVCSConnection, GeoVCSConnectionManager
 
@@ -86,7 +86,7 @@ class GeoVCSDialogConnection(QDialog, FORM_CLASS):
                     "Check your credentials and server availability.",
                 )
                 return False
-        except Exception as e:
+        except RuntimeError as e:
             QMessageBox.critical(
                 self,
                 "Connection Exception",

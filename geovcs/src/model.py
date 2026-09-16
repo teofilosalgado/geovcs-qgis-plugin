@@ -283,7 +283,11 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
                 SETTINGS_CONNECTION_KEY,
                 GeoVCSConnection,
             )
-            self._is_connected = self._connection.test()
+            self._is_connected = False
+            try:
+                self._is_connected = self._connection.test()
+            except RuntimeError:
+                self._is_connected = False
 
         if self._connection is not None and self._connection.password is not None:
             os.environ["MYSQL_PWD"] = self._connection.password
