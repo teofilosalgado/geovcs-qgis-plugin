@@ -258,6 +258,13 @@ class GeoVCSChange:
 
 
 @dataclass
+class GeoVCSMergeResult:
+    hash: str | None
+    conflicts: int | None
+    message: str | None
+
+
+@dataclass
 class GeoVCSBranch:
     name: str
     hash: str
@@ -588,3 +595,44 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
 
         self._connection.branch = branch
         self.connect(self._connection)
+
+    def merge(
+        self,
+        source_branch: str,
+        delete_source_branch: bool = False,
+    ) -> GeoVCSMergeResult:
+        datasource = self._get_datasource()
+
+        result = datasource.ExecuteSQL(
+            query.CALL__DOLT_MERGE.substitute(branch=source_branch)
+        )
+
+        hash: str | None = None
+        conflicts: int | None = None
+        message: str | None = None
+
+        if result is not None:
+            layer_defn = result.GetLayerDefn()
+            field_names = [
+                layer_defn.GetFieldDefn(i).GetName().lower()
+                for i in range(layer_defn.GetFieldCount())
+            ]
+            for feature in result:
+                if "hash" in field_names:
+                    hash = feature.GetFieldAsString(field_names.index("hash"))
+                if "conflicts" in field_names:
+                    conflicts = feature.GetFieldAsInteger(
+                        field_names.index("conflicts")
+                    )
+                if "message" in field_names:
+                    message = feature.GetFieldAsString(field_names.index("message"))
+
+            if datasource and result:
+                datasource.ReleaseResultSet(result)
+            if datasource:
+                datasource = None
+
+        if delete_source_branch:
+            self.delete_branch(source_branch)
+
+        return GeoVCSMergeResult(hash, conflicts, message)

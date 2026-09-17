@@ -59,6 +59,13 @@ CALL__DOLT_CHECKOUT = Template(
 """
 )
 
+CALL__DOLT_MERGE = Template(
+    # sql
+    """
+    CALL DOLT_MERGE('$branch')
+"""
+)
+
 SELECT__DOLT_LOG_BRANCH = Template(
     # sql
     """

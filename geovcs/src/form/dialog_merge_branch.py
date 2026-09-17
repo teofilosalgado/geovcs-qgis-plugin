@@ -11,6 +11,7 @@ from qgis.PyQt.QtWidgets import (
     QMessageBox,
     QTreeWidgetItem,
 )
+from qgis.utils import iface
 
 from geovcs.src.constant import FORM_DIRECTORY_PATH
 from geovcs.src.model import GeoVCSConnectionManager, GeoVCSDeltaAction
@@ -24,7 +25,7 @@ class GeoVCSDialogMergeBranch(QDialog, FORM_CLASS):
     def __init__(self, parent_path=None):
         super().__init__(parent_path)
 
-        self._target_branch: str | None = None
+        self._target_branch: str | None = GeoVCSConnectionManager().branch
         self._source_branch: str | None = None
 
         self.setupUi(self)
@@ -57,6 +58,11 @@ class GeoVCSDialogMergeBranch(QDialog, FORM_CLASS):
 
     def _accept(self):
         if not self._source_branch or not self._target_branch:
+            QMessageBox.warning(
+                self,
+                "GeoVCS - Merge Branch",
+                "Please select a source branch to merge.",
+            )
             return
 
         self.setEnabled(False)
@@ -68,7 +74,49 @@ class GeoVCSDialogMergeBranch(QDialog, FORM_CLASS):
             QMessageBox.StandardButton.No,
         )
         if result == QMessageBox.StandardButton.Yes:
-            pass
+            delete_source = self.check_delete_source_branch.isChecked()
+            try:
+                result = GeoVCSConnectionManager().merge(
+                    source_branch=self._source_branch,
+                    delete_source_branch=delete_source,
+                )
+                if not result.conflicts:
+                    QgsMessageLog.logMessage(
+                        f"Branch '{self._source_branch}' merged into '{self._target_branch}' successfully generating commit '{result.hash}'.",
+                        "GeoVCS",
+                        Qgis.MessageLevel.Success,
+                    )
+                    iface.messageBar().pushMessage(  # type: ignore
+                        "GeoVCS - Branch Merged",
+                        f"Branch '{self._source_branch}' merged into '{self._target_branch}' successfully.",
+                        Qgis.MessageLevel.Success,
+                    )
+                    self.accept()
+                    return
+                else:
+                    QgsMessageLog.logMessage(
+                        f"Merge resulted in '{result.conflicts}' conflicts: {result.message or 'unresolved conflicts'}",
+                        "GeoVCS",
+                        Qgis.MessageLevel.Warning,
+                    )
+                    QMessageBox.warning(
+                        self,
+                        "GeoVCS - Merge Conflicts",
+                        f"Merge resulted in '{result.conflicts}' conflicts: {result.message or 'unresolved conflicts'}",
+                    )
+
+            except RuntimeError as e:
+                QgsMessageLog.logMessage(
+                    f"Failed to merge branch '{self._source_branch}' into '{self._target_branch}': {e}",
+                    "GeoVCS",
+                    Qgis.MessageLevel.Critical,
+                )
+                QMessageBox.critical(
+                    self,
+                    "GeoVCS - Merge Error",
+                    f"Failed to merge branch '{self._source_branch}' into '{self._target_branch}':\n{e}",
+                )
+
         self.setEnabled(True)
 
     def _update_source_branches(self):
