@@ -1,11 +1,9 @@
 import os
 
-from qgis.core import Qgis
 from qgis.gui import QgsAuthSettingsWidget
 from qgis.PyQt import uic
 from qgis.PyQt.QtGui import QIntValidator
 from qgis.PyQt.QtWidgets import QDialog, QMessageBox
-from qgis.utils import iface
 
 from geovcs.src.constant import FORM_DIRECTORY_PATH
 from geovcs.src.model import GeoVCSConnection, GeoVCSConnectionManager
@@ -79,30 +77,32 @@ class GeoVCSDialogConnection(QDialog, FORM_CLASS):
         connection = self._get_data()
         try:
             result = connection.test()
-            if not result:
+            if result.status:
+                QMessageBox.information(
+                    self,
+                    "Connection Established",
+                    f"Connection with database instance '{self.edit_host.text().strip()}:{self.edit_port.text().strip()}@{self.edit_database.text().strip()}/{self.edit_branch.text().strip()}' established successfully.\n\nDolt Version: {result.dolt_version}\nMySQL Version: {result.mysql_version}",
+                )
+                return True
+            else:
                 QMessageBox.critical(
                     self,
                     "Connection Error",
                     "Check your credentials and server availability.",
                 )
                 return False
+
         except RuntimeError as e:
             QMessageBox.critical(
                 self,
                 "Connection Exception",
-                f"Exception while connecting to server: {type(e).__name__}\nCheck if your database contains at least one feature class.",
+                f"Exception while connecting to server: {type(e).__name__} {e}\n\nHint: check if your database is available and contains at least one feature class.",
             )
             return False
-        return True
 
     def _test(self):
         self.setEnabled(False)
-        if self._validate():
-            iface.messageBar().pushMessage(  # type: ignore
-                "GeoVCS - Connection Established",
-                f"Connection with database instance '{self.edit_host.text().strip()}:{self.edit_port.text().strip()}@{self.edit_database.text().strip()}/{self.edit_branch.text().strip()}' established successfully.",
-                Qgis.MessageLevel.Success,
-            )
+        self._validate()
         self.setEnabled(True)
 
     def _accept(self):

@@ -14,6 +14,7 @@ from qgis.PyQt.QtWidgets import (
 from qgis.utils import iface
 
 from geovcs.src.constant import FORM_DIRECTORY_PATH
+from geovcs.src.form.dialog_merge_conflicts import GeoVCSDialogMergeConflicts
 from geovcs.src.model import GeoVCSConnectionManager, GeoVCSDeltaAction
 
 FORM_FILE = os.path.join(FORM_DIRECTORY_PATH, "dialog_merge_branch.ui")
@@ -77,8 +78,7 @@ class GeoVCSDialogMergeBranch(QDialog, FORM_CLASS):
             delete_source = self.check_delete_source_branch.isChecked()
             try:
                 result = GeoVCSConnectionManager().merge(
-                    source_branch=self._source_branch,
-                    delete_source_branch=delete_source,
+                    source_branch=self._source_branch
                 )
                 if not result.conflicts:
                     QgsMessageLog.logMessage(
@@ -86,7 +86,7 @@ class GeoVCSDialogMergeBranch(QDialog, FORM_CLASS):
                         "GeoVCS",
                         Qgis.MessageLevel.Success,
                     )
-                    iface.messageBar().pushMessage(  # type: ignore
+                    iface.messageBar().pushMessage(
                         "GeoVCS - Branch Merged",
                         f"Branch '{self._source_branch}' merged into '{self._target_branch}' successfully.",
                         Qgis.MessageLevel.Success,
@@ -99,11 +99,47 @@ class GeoVCSDialogMergeBranch(QDialog, FORM_CLASS):
                         "GeoVCS",
                         Qgis.MessageLevel.Warning,
                     )
-                    QMessageBox.warning(
-                        self,
-                        "GeoVCS - Merge Conflicts",
-                        f"Merge resulted in '{result.conflicts}' conflicts: {result.message or 'unresolved conflicts'}",
+                    conflict_tables = GeoVCSConnectionManager().get_conflict_tables()
+                    strategy, ok = GeoVCSDialogMergeConflicts.execute(
+                        conflict_tables, self
                     )
+                    if ok and strategy:
+                        GeoVCSConnectionManager().resolve_conflicts(strategy, ".")
+                        commit_message = (
+                            f"Merge branch '{self._source_branch}' into "
+                            f"'{self._target_branch}' (resolved conflicts using {strategy})"
+                        )
+                        commit_hash = GeoVCSConnectionManager().add_all_and_commit(
+                            commit_message
+                        )
+
+                        if delete_source:
+                            GeoVCSConnectionManager().delete_branch(self._source_branch)
+
+                        QgsMessageLog.logMessage(
+                            f"Conflicts resolved using '{strategy}'. Commit '{commit_hash}' created.",
+                            "GeoVCS",
+                            Qgis.MessageLevel.Success,
+                        )
+                        iface.messageBar().pushMessage(
+                            "GeoVCS - Conflicts Resolved",
+                            f"Branch '{self._source_branch}' merged with conflicts resolved using {strategy}.",
+                            Qgis.MessageLevel.Success,
+                        )
+                        self.accept()
+                        return
+                    else:
+                        GeoVCSConnectionManager().abort_merge()
+                        QgsMessageLog.logMessage(
+                            f"Merge between '{self._source_branch}' and '{self._target_branch}' was aborted.",
+                            "GeoVCS",
+                            Qgis.MessageLevel.Info,
+                        )
+                        QMessageBox.information(
+                            self,
+                            "GeoVCS - Merge Aborted",
+                            "The merge operation was cancelled and all pending changes were aborted.",
+                        )
 
             except RuntimeError as e:
                 QgsMessageLog.logMessage(

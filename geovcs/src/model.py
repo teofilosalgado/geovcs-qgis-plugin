@@ -12,8 +12,10 @@ from qgis.core import (
     Qgis,
     QgsApplication,
     QgsAuthMethodConfig,
+    QgsMessageLog,
     QgsSettings,
 )
+from qgis.utils import iface
 
 from geovcs.src.constant import (
     SETTINGS_BASE_KEY,
@@ -46,6 +48,13 @@ class GeoVCSDeltaFeature:
 class GeoVCSDiff:
     table_name: str
     feature_deltas: list[GeoVCSDeltaFeature]
+
+
+@dataclass
+class GeoVCSConnectionTestResult:
+    status: bool
+    dolt_version: str | None = ""
+    mysql_version: str | None = ""
 
 
 @dataclass
@@ -112,12 +121,25 @@ class GeoVCSConnection:
         )
         return value
 
-    def test(self) -> bool:
+    def test(self) -> GeoVCSConnectionTestResult:
         datasource = ogr.Open(self.ogr_connection_string)
         if datasource is None:
-            return False
-        datasource = None
-        return True
+            return GeoVCSConnectionTestResult(False, None, None)
+
+        result = datasource.ExecuteSQL(query.SELECT__VERSION)
+        dolt_version: str | None = ""
+        mysql_version: str | None = ""
+        try:
+            if result is not None:
+                for feature in result:
+                    dolt_version = feature.GetFieldAsString("dolt_version")
+                    mysql_version = feature.GetFieldAsString("mysql_version")
+        finally:
+            if datasource and result:
+                datasource.ReleaseResultSet(result)
+            if datasource:
+                datasource = None
+        return GeoVCSConnectionTestResult(True, dolt_version, mysql_version)
 
 
 class GeoVCSLayer:
@@ -284,17 +306,28 @@ class GeoVCSLog:
 class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
     def __init__(self) -> None:
         self._connection: GeoVCSConnection | None = None
+        self._datasource: gdal.Dataset | None = None
+
         self._is_connected: bool = False
+
         if GeoVCSSettings.key_exists(SETTINGS_CONNECTION_KEY):
-            self._connection = GeoVCSSettings.read_object(
+            connection = GeoVCSSettings.read_object(
                 SETTINGS_CONNECTION_KEY,
                 GeoVCSConnection,
             )
-            self._is_connected = False
             try:
-                self._is_connected = self._connection.test()
-            except RuntimeError:
-                self._is_connected = False
+                self.connect(connection)
+            except RuntimeError as e:
+                QgsMessageLog.logMessage(
+                    f"Failed to establish connection to database '{connection.connection_string}': {e}",
+                    "GeoVCS",
+                    Qgis.MessageLevel.Critical,
+                )
+                iface.messageBar().pushMessage(
+                    "GeoVCS - Connection Failed",
+                    f"Failed to establish connection to database '{connection.connection_string}': {e}",
+                    Qgis.MessageLevel.Critical,
+                )
 
         if self._connection is not None and self._connection.password is not None:
             os.environ["MYSQL_PWD"] = self._connection.password
@@ -343,25 +376,33 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
         if not self._connection:
             raise RuntimeError("No connection provided")
 
+        if not self._datasource:
+            raise RuntimeError("No datasource provided")
+
+        return self._datasource
+
+    def connect(self, connection: GeoVCSConnection):
+        # Configure connection
+        self._connection = connection
+        GeoVCSSettings.write_object(SETTINGS_CONNECTION_KEY, self._connection)
+        if self._connection.password is not None:
+            os.environ["MYSQL_PWD"] = self._connection.password
+
+        # Configure datasource
         datasource: gdal.Dataset | None = ogr.Open(
-            self._connection.ogr_connection_string
+            self._connection.ogr_connection_string, 1
         )
         if not datasource:
             raise RuntimeError("No datasource provided")
-
         result = datasource.ExecuteSQL(
             query.CALL__DOLT_CHECKOUT.substitute(branch=self.branch)
         )
         if datasource and result:
             datasource.ReleaseResultSet(result)
+        self._datasource = datasource
 
-        return datasource
-
-    def connect(self, connection: GeoVCSConnection):
-        self._connection = connection
-        GeoVCSSettings.write_object(SETTINGS_CONNECTION_KEY, self._connection)
-        if self._connection.password is not None:
-            os.environ["MYSQL_PWD"] = self._connection.password
+        # Set connection flag
+        self._is_connected = True
 
     def disconnect(self):
         if self._connection:
@@ -393,8 +434,6 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
         finally:
             if datasource and result:
                 datasource.ReleaseResultSet(result)
-            if datasource:
-                datasource = None
 
     def get_branches(self) -> Generator[GeoVCSBranch, None, None]:
         datasource = self._get_datasource()
@@ -413,19 +452,12 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
         finally:
             if datasource and result:
                 datasource.ReleaseResultSet(result)
-            if datasource:
-                datasource = None
 
     def get_layers(self) -> Generator[Layer, None, None]:
         datasource = self._get_datasource()
-
         layer_count = datasource.GetLayerCount()
-        try:
-            for i in range(layer_count):
-                yield datasource.GetLayer(i)
-        finally:
-            if datasource:
-                datasource = None
+        for i in range(layer_count):
+            yield datasource.GetLayer(i)
 
     def get_changes(self) -> Generator[GeoVCSChange, None, None]:
         datasource = self._get_datasource()
@@ -441,8 +473,6 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
         finally:
             if datasource and result:
                 datasource.ReleaseResultSet(result)
-            if datasource:
-                datasource = None
 
     def get_diffs(self, commit: str) -> Generator[GeoVCSDiff, None, None]:
         datasource = self._get_datasource()
@@ -552,9 +582,6 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
         if datasource and result:
             datasource.ReleaseResultSet(result)
 
-        if datasource:
-            datasource = None
-
         return hash
 
     def create_branch(self, branch: str):
@@ -565,8 +592,6 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
         )
         if datasource and result:
             datasource.ReleaseResultSet(result)
-        if datasource:
-            datasource = None
 
     def delete_branch(self, branch: str):
         datasource = self._get_datasource()
@@ -576,8 +601,6 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
         )
         if datasource and result:
             datasource.ReleaseResultSet(result)
-        if datasource:
-            datasource = None
 
     def checkout(self, branch: str):
         if not self._connection:
@@ -590,49 +613,55 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
         if datasource and result:
             datasource.ReleaseResultSet(result)
 
-        if datasource:
-            datasource = None
-
         self._connection.branch = branch
         self.connect(self._connection)
 
     def merge(
         self,
         source_branch: str,
-        delete_source_branch: bool = False,
-    ) -> GeoVCSMergeResult:
+    ) -> GeoVCSMergeResult | None:
         datasource = self._get_datasource()
+
+        disable_autocommit = datasource.ExecuteSQL(query.DISABLE__AUTOCOMMIT)
+        if datasource and disable_autocommit:
+            datasource.ReleaseResultSet(disable_autocommit)
 
         result = datasource.ExecuteSQL(
             query.CALL__DOLT_MERGE.substitute(branch=source_branch)
         )
 
-        hash: str | None = None
-        conflicts: int | None = None
-        message: str | None = None
+        return None
 
-        if result is not None:
-            layer_defn = result.GetLayerDefn()
-            field_names = [
-                layer_defn.GetFieldDefn(i).GetName().lower()
-                for i in range(layer_defn.GetFieldCount())
-            ]
-            for feature in result:
-                if "hash" in field_names:
-                    hash = feature.GetFieldAsString(field_names.index("hash"))
-                if "conflicts" in field_names:
-                    conflicts = feature.GetFieldAsInteger(
-                        field_names.index("conflicts")
-                    )
-                if "message" in field_names:
-                    message = feature.GetFieldAsString(field_names.index("message"))
-
+    def get_conflict_tables(self) -> list[str]:
+        datasource = self._get_datasource()
+        result = datasource.ExecuteSQL(query.SELECT__DOLT_CONFLICTS_TABLES)
+        tables: list[str] = []
+        try:
+            if result is not None:
+                for feature in result:
+                    tables.append(feature.GetFieldAsString("table_name"))
+        finally:
             if datasource and result:
                 datasource.ReleaseResultSet(result)
-            if datasource:
-                datasource = None
 
-        if delete_source_branch:
-            self.delete_branch(source_branch)
+        return tables
 
-        return GeoVCSMergeResult(hash, conflicts, message)
+    def resolve_conflicts(self, strategy: str, table_name: str = "."):
+        datasource = self._get_datasource()
+        sql = query.CALL__DOLT_CONFLICTS_RESOLVE.substitute(
+            strategy=strategy, table_name=table_name
+        )
+        result = datasource.ExecuteSQL(sql)
+        if datasource and result:
+            datasource.ReleaseResultSet(result)
+
+    def abort_merge(self):
+        datasource = self._get_datasource()
+
+        result_abort = datasource.ExecuteSQL(query.CALL__DOLT_MERGE_ABORT)
+        if datasource and result_abort:
+            datasource.ReleaseResultSet(result_abort)
+
+        result_reset = datasource.ExecuteSQL(query.CALL__DOLT_RESET_HARD)
+        if datasource and result_reset:
+            datasource.ReleaseResultSet(result_reset)

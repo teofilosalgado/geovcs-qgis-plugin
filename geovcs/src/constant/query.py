@@ -1,6 +1,11 @@
 from string import Template
 
 # sql
+SELECT__VERSION = """
+    SELECT dolt_version() AS dolt_version, VERSION() AS mysql_version
+"""
+
+# sql
 SELECT__DOLT_BRANCHES = """
     SELECT
         name,
@@ -59,12 +64,54 @@ CALL__DOLT_CHECKOUT = Template(
 """
 )
 
+# sql
+DISABLE__AUTOCOMMIT = """
+    SET autocommit = 0
+"""
+
+# sql
+ENABLE__AUTOCOMMIT = """
+    SET autocommit = 1
+"""
+
+# sql
+COMMIT = """
+    COMMIT
+"""
+
 CALL__DOLT_MERGE = Template(
     # sql
     """
     CALL DOLT_MERGE('$branch')
 """
 )
+
+# sql
+SELECT__DOLT_CONFLICTS_TABLES = """
+    SELECT
+        table_name
+    FROM
+        dolt_conflicts
+    ORDER BY
+        table_name ASC
+"""
+
+CALL__DOLT_CONFLICTS_RESOLVE = Template(
+    # sql
+    """
+    CALL DOLT_CONFLICTS_RESOLVE('$strategy', '$table_name')
+"""
+)
+
+# sql
+CALL__DOLT_MERGE_ABORT = """
+    CALL DOLT_MERGE('--abort')
+"""
+
+# sql
+CALL__DOLT_RESET_HARD = """
+    CALL DOLT_RESET('--hard')
+"""
 
 SELECT__DOLT_LOG_BRANCH = Template(
     # sql
