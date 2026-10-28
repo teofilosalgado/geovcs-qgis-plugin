@@ -389,7 +389,7 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
                 f"Failed to establish connection to database {connection.connection_string}"
             )
 
-        GeoVCSSettings.write_object(SETTINGS_CONNECTION_KEY, self._connection)
+        GeoVCSSettings.write_object(SETTINGS_CONNECTION_KEY, connection)
         if connection.password is not None:
             os.environ["MYSQL_PWD"] = connection.password
 
@@ -403,7 +403,7 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
                 f"Failed to create datasource for connection {connection.connection_string}"
             )
         result = datasource.ExecuteSQL(
-            query.CALL__DOLT_CHECKOUT.substitute(branch=self.branch)
+            query.CALL__DOLT_CHECKOUT.substitute(branch=connection.branch)
         )
         if datasource and result:
             datasource.ReleaseResultSet(result)
