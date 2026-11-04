@@ -625,8 +625,17 @@ class GeoVCSConnectionManager(metaclass=GeoVCSConnectionManagerMetaclass):
         merge = self._get_datasource().ExecuteSQL(
             query.CALL__DOLT_MERGE.substitute(branch=source_branch)
         )
-        if merge:
-            self._get_datasource().ReleaseResultSet(merge)
+        try:
+            if merge is not None:
+                for feature in merge:
+                    return GeoVCSMergeResult(
+                        feature.GetFieldAsString("hash"),
+                        feature.GetFieldAsInteger("conflicts"),
+                        feature.GetFieldAsString("message"),
+                    )
+        finally:
+            if merge:
+                self._get_datasource().ReleaseResultSet(merge)
         return None
 
     def get_conflict_tables(self) -> list[str]:

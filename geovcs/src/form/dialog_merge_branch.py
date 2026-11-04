@@ -67,22 +67,25 @@ class GeoVCSDialogMergeBranch(QDialog, FORM_CLASS):
             return
 
         self.setEnabled(False)
-        result = QMessageBox.question(
+        question_result = QMessageBox.question(
             self,
             "GeoVCS - Merge Branch",
             f"Are you sure you want to merge the branch '{self._source_branch}' to '{self._target_branch}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
-        if result == QMessageBox.StandardButton.Yes:
+        if question_result == QMessageBox.StandardButton.Yes:
             delete_source = self.check_delete_source_branch.isChecked()
             try:
-                result = GeoVCSConnectionManager().merge(
+                merge_result = GeoVCSConnectionManager().merge(
                     source_branch=self._source_branch
                 )
-                if not result.conflicts:
+                if not merge_result:
+                    raise RuntimeError("No merge status received from server.")
+
+                if not merge_result.conflicts:
                     QgsMessageLog.logMessage(
-                        f"Branch '{self._source_branch}' merged into '{self._target_branch}' successfully generating commit '{result.hash}'.",
+                        f"Branch '{self._source_branch}' merged into '{self._target_branch}' successfully generating commit '{merge_result.hash}'.",
                         "GeoVCS",
                         Qgis.MessageLevel.Success,
                     )
@@ -95,7 +98,7 @@ class GeoVCSDialogMergeBranch(QDialog, FORM_CLASS):
                     return
                 else:
                     QgsMessageLog.logMessage(
-                        f"Merge resulted in '{result.conflicts}' conflicts: {result.message or 'unresolved conflicts'}",
+                        f"Merge resulted in '{merge_result.conflicts}' conflicts: {merge_result.message or 'unresolved conflicts'}",
                         "GeoVCS",
                         Qgis.MessageLevel.Warning,
                     )
@@ -112,6 +115,8 @@ class GeoVCSDialogMergeBranch(QDialog, FORM_CLASS):
                         commit_hash = GeoVCSConnectionManager().add_all_and_commit(
                             commit_message
                         )
+                        if not commit_hash:
+                            raise RuntimeError("No commit hash received from server.")
 
                         if delete_source:
                             GeoVCSConnectionManager().delete_branch(self._source_branch)
