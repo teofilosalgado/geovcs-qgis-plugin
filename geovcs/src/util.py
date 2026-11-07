@@ -37,3 +37,36 @@ def safe_text(value: Any, length: int | None = None) -> str:
     """Render an optional database value without breaking the UI."""
     text = "" if value is None else str(value)
     return text[:length] if length is not None else text
+
+
+def refresh_version_manager_dock() -> None:
+    """Synchronize every open Version Manager dock with the current state.
+
+    Branch lists live in more than one place (the dock combo box, the history
+    dialog and the merge dialog). Whenever a branch is created or deleted
+    outside the dock, the dock must be refreshed so it does not keep offering
+    a branch that no longer exists on the server.
+    """
+    try:
+        from qgis.utils import iface
+
+        from geovcs.src.form.dock_version_manager import (
+            GeoVCSDockVersionManagerDock,
+        )
+        from geovcs.src.model import GeoVCSConnectionManager
+
+        if iface is None:
+            return
+
+        main_window = iface.mainWindow()
+        if main_window is None:
+            return
+
+        manager = GeoVCSConnectionManager()
+        for dock in main_window.findChildren(GeoVCSDockVersionManagerDock):
+            if manager.is_connected:
+                dock.refresh_branches()
+            else:
+                dock._update_connection_state()
+    except Exception:  # noqa: BLE001 - UI synchronization is best effort
+        pass

@@ -26,7 +26,7 @@ from geovcs.src.model import (
     GeoVCSConnectionManager,
     GeoVCSLayer,
 )
-from geovcs.src.util import get_logo
+from geovcs.src.util import get_logo, refresh_version_manager_dock
 
 
 class GeoVCSLayerItem(QgsLayerItem):
@@ -286,21 +286,7 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
     @staticmethod
     def _refresh_version_manager():
         """Ask any open Version Manager dock to reload after connect/disconnect."""
-        try:
-            from geovcs.src.form.dock_version_manager import (
-                GeoVCSDockVersionManagerDock,
-            )
-
-            main_window = iface.mainWindow()
-            if main_window is None:
-                return
-            for dock in main_window.findChildren(GeoVCSDockVersionManagerDock):
-                if GeoVCSConnectionManager().is_connected:
-                    dock.refresh_branches()
-                else:
-                    dock._update_connection_state()
-        except Exception:  # noqa: BLE001 - optional UI refresh
-            pass
+        refresh_version_manager_dock()
 
     def _manage_connection(self, item: GeoVCSConnectionsRootItem):
         manager = GeoVCSConnectionManager()

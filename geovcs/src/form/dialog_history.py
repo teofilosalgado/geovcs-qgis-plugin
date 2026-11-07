@@ -15,7 +15,7 @@ from qgis.utils import iface
 
 from geovcs.src.constant import FORM_DIRECTORY_PATH
 from geovcs.src.model import GeoVCSConnectionManager
-from geovcs.src.util import busy_cursor, safe_text
+from geovcs.src.util import busy_cursor, refresh_version_manager_dock, safe_text
 
 FORM_FILE = os.path.join(FORM_DIRECTORY_PATH, "dialog_history.ui")
 
@@ -217,6 +217,11 @@ class GeoVCSDialogHistory(QDialog, FORM_CLASS):
             )
         except Exception:  # noqa: BLE001 - iface may be unavailable
             pass
+
+        # The dock keeps its own branch combo box. Refresh it immediately,
+        # otherwise the deleted branch remains selectable and the next
+        # checkout attempt fails against a branch that no longer exists.
+        refresh_version_manager_dock()
         self.refresh()
 
     def show_context_menu(self, position: QPoint):
