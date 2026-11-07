@@ -52,7 +52,7 @@ CALL__DOLT_CREATE_BRANCH = Template(
 CALL__DOLT_DELETE_BRANCH = Template(
     # sql
     """
-    CALL DOLT_BRANCH('-D', '$branch')
+    CALL DOLT_BRANCH('-d', '$branch')
 """
 )
 

@@ -1,6 +1,6 @@
 import os
 
-from qgis.core import QgsApplication
+from qgis.core import Qgis, QgsApplication, QgsMessageLog
 from qgis.PyQt import uic
 from qgis.PyQt.QtCore import QPoint, Qt
 from qgis.PyQt.QtGui import QFont, QStandardItem, QStandardItemModel
@@ -11,9 +11,11 @@ from qgis.PyQt.QtWidgets import (
     QMessageBox,
     QTreeWidgetItem,
 )
+from qgis.utils import iface
 
 from geovcs.src.constant import FORM_DIRECTORY_PATH
 from geovcs.src.model import GeoVCSConnectionManager
+from geovcs.src.util import busy_cursor, safe_text
 
 FORM_FILE = os.path.join(FORM_DIRECTORY_PATH, "dialog_history.ui")
 
@@ -21,40 +23,78 @@ FORM_CLASS, _ = uic.loadUiType(FORM_FILE)
 
 
 class GeoVCSDialogHistory(QDialog, FORM_CLASS):
-    def __init__(self, parent_path=None):
-        super().__init__(parent_path)
+    def __init__(self, parent=None):
+        super().__init__(parent)
         self.setupUi(self)
 
         self.button_refresh.setIcon(QgsApplication.getThemeIcon("/mActionRefresh.svg"))
         self.table_commits.setWordWrap(False)
         self.table_commits.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
 
-        if not GeoVCSConnectionManager().is_connected:
-            return
-
         self.button_refresh.clicked.connect(self.refresh)
         self.tree_branches.itemSelectionChanged.connect(self._build_table_widget)
+        self.tree_branches.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tree_branches.customContextMenuRequested.connect(self.show_context_menu)
+
+        if not GeoVCSConnectionManager().is_connected:
+            self.button_refresh.setEnabled(False)
+            self.setWindowTitle("GeoVCS - History (not connected)")
+            return
+
         self._build_tree_branches()
 
+    def _report_error(self, title: str, exception: Exception):
+        message = f"{type(exception).__name__}: {exception}"
+        QgsMessageLog.logMessage(message, "GeoVCS", Qgis.MessageLevel.Critical)
+        try:
+            iface.messageBar().pushMessage(
+                title, message, Qgis.MessageLevel.Critical, 10
+            )
+        except Exception:  # noqa: BLE001 - iface may be unavailable
+            pass
+
+    @staticmethod
+    def _short_date(value) -> str:
+        text = safe_text(value)
+        return text[:-4] if len(text) > 4 else text
+
     def _build_tree_branches(self):
+        try:
+            with busy_cursor():
+                branches = sorted(
+                    GeoVCSConnectionManager().get_branches(),
+                    key=lambda item: item.name or "",
+                )
+        except Exception as exception:  # noqa: BLE001 - keep the dialog usable
+            self._report_error("GeoVCS - Unable to list branches", exception)
+            self.tree_branches.clear()
+            return
+
+        self.tree_branches.blockSignals(True)
+        try:
+            self._populate_tree(branches)
+        finally:
+            self.tree_branches.blockSignals(False)
+
+        # Load the commits for the branch that ended up selected.
+        self._build_table_widget()
+
+    def _populate_tree(self, branches):
         self.tree_branches.clear()
         self.tree_branches.setHeaderLabels(
             ["Name", "Hash", "Dirty?", "Creation Date", "Created By"]
         )
         nodes: dict[str, QTreeWidgetItem] = {}
 
-        sorted_branches = sorted(
-            GeoVCSConnectionManager().get_branches(), key=lambda item: item.name
-        )
-        for branch in sorted_branches:
-            path_parts = branch.name.split("]")
+        for branch in branches:
+            path_parts = (branch.name or "").split("]")
 
             widget_item_data = [
                 path_parts[-1],
-                branch.hash[:8],
+                safe_text(branch.hash, 8),
                 "Yes" if branch.dirty else "No",
-                branch.latest_author_date[:-4],
-                branch.latest_author,
+                self._short_date(branch.latest_author_date),
+                safe_text(branch.latest_author),
             ]
 
             if len(path_parts) == 1:
@@ -93,14 +133,14 @@ class GeoVCSDialogHistory(QDialog, FORM_CLASS):
         for i in range(5):
             self.tree_branches.resizeColumnToContents(i)
 
-        # Add context menu listeners
-        self.tree_branches.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.tree_branches.customContextMenuRequested.connect(self.show_context_menu)
-
     def _build_table_widget(self):
         selected_items = self.tree_branches.selectedItems()
         selected_item: QTreeWidgetItem | None = next(iter(selected_items), None)
         if not selected_item:
+            old_model = self.table_commits.model()
+            self.table_commits.setModel(QStandardItemModel())
+            if old_model is not None:
+                old_model.deleteLater()
             return
 
         branch = selected_item.text(0)
@@ -113,18 +153,28 @@ class GeoVCSDialogHistory(QDialog, FORM_CLASS):
         if self.table_commits.model():
             self.table_commits.model().clear()
 
+        try:
+            with busy_cursor():
+                logs = list(GeoVCSConnectionManager().get_logs(branch))
+        except Exception as exception:  # noqa: BLE001 - keep the dialog usable
+            self._report_error("GeoVCS - Unable to load commit history", exception)
+            return
+
+        old_model = self.table_commits.model()
         model_commits = QStandardItemModel()
         model_commits.setHorizontalHeaderLabels(["Date", "Author", "Hash", "Message"])
-        for log in GeoVCSConnectionManager().get_logs(branch):
+        for log in logs:
             model_commits.appendRow(
                 [
-                    QStandardItem(log.date[:-4]),
-                    QStandardItem(log.committer),
-                    QStandardItem(log.commit_hash[:8]),
-                    QStandardItem(log.message),
+                    QStandardItem(self._short_date(log.date)),
+                    QStandardItem(safe_text(log.committer)),
+                    QStandardItem(safe_text(log.commit_hash, 8)),
+                    QStandardItem(safe_text(log.message)),
                 ]
             )
         self.table_commits.setModel(model_commits)
+        if old_model is not None:
+            old_model.deleteLater()
         self.table_commits.resizeColumnsToContents()
         self.table_commits.horizontalHeader().setStretchLastSection(True)
 
@@ -135,13 +185,39 @@ class GeoVCSDialogHistory(QDialog, FORM_CLASS):
         result = QMessageBox.question(
             self,
             f"GeoVCS - Delete Branch '{branch_alias}'",
-            f"Are you sure you want to delete the branch '{branch_name}'?",
+            f"Are you sure you want to delete the branch '{branch_name}'?\n\n"
+            "Only fully merged branches can be deleted.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
-        if result == QMessageBox.StandardButton.Yes:
-            GeoVCSConnectionManager().delete_branch(branch_name)
-            self.refresh()
+        if result != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            with busy_cursor():
+                GeoVCSConnectionManager().delete_branch(branch_name)
+        except Exception as exception:  # noqa: BLE001 - surfaced to the user
+            QgsMessageLog.logMessage(
+                f"Failed to delete branch '{branch_name}': {exception}",
+                "GeoVCS",
+                Qgis.MessageLevel.Critical,
+            )
+            QMessageBox.critical(
+                self,
+                "GeoVCS - Delete Branch Failed",
+                f"Could not delete branch '{branch_name}':\n\n{exception}",
+            )
+            return
+
+        try:
+            iface.messageBar().pushMessage(
+                "GeoVCS - Branch Deleted",
+                f"Branch '{branch_name}' deleted successfully.",
+                Qgis.MessageLevel.Success,
+            )
+        except Exception:  # noqa: BLE001 - iface may be unavailable
+            pass
+        self.refresh()
 
     def show_context_menu(self, position: QPoint):
         item = self.tree_branches.itemAt(position)

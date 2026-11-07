@@ -18,9 +18,11 @@ from qgis.utils import iface
 from geovcs.src.constant import PROVIDER_KEY
 from geovcs.src.form import (
     GeoVCSDialogConnectionCreate,
+    GeoVCSDialogConnectionEdit,
     GeoVCSDialogHistory,
 )
 from geovcs.src.model import (
+    GeoVCSConnection,
     GeoVCSConnectionManager,
     GeoVCSLayer,
 )
@@ -85,24 +87,50 @@ class GeoVCSLayerGroupItem(QgsDataCollectionItem):
         self.setState(Qgis.BrowserItemState.Populating)
         items: list[GeoVCSLayerItem] = []
 
-        for layer in GeoVCSConnectionManager().get_layers():
-            item = GeoVCSLayerItem(
-                self,
-                GeoVCSLayer(
-                    posixpath.join(self.path(), layer.GetName()),
-                    layer.GetName(),
-                    layer.GetGeometryColumn(),
-                    layer.GetFIDColumn(),
-                    layer.GetGeomType(),
-                ),
-            )
+        try:
+            manager = GeoVCSConnectionManager()
+            if not manager.is_connected:
+                self.setState(Qgis.BrowserItemState.Populated)
+                return []
 
-            items.append(item)
+            # ``get_layers`` yields plain snapshots; the underlying OGR layer
+            # objects stay owned by the dataset and are never leaked here.
+            for layer in manager.get_layers():
+                item = GeoVCSLayerItem(
+                    self,
+                    GeoVCSLayer(
+                        posixpath.join(self.path(), layer.name),
+                        layer.name,
+                        layer.geometry_column,
+                        layer.key_column,
+                        layer.geometry_type,
+                    ),
+                )
+
+                items.append(item)
+                QgsMessageLog.logMessage(
+                    f"Layer '{item.geovcs_layer.name}' of type "
+                    f"'{item.geovcs_layer.layer_type.name}' loaded from "
+                    f"'{item.geovcs_layer.uri}'",
+                    "GeoVCS",
+                    Qgis.MessageLevel.Success,
+                )
+        except Exception as exception:  # noqa: BLE001 - browser must not crash
             QgsMessageLog.logMessage(
-                f"Layer '{item.geovcs_layer.name}' of type '{item.geovcs_layer.layer_type.name}' loaded from '{item.geovcs_layer.uri}'",  # type: ignore
+                f"Unable to list GeoVCS layers: {exception}",
                 "GeoVCS",
-                Qgis.MessageLevel.Success,
+                Qgis.MessageLevel.Critical,
             )
+            try:
+                iface.messageBar().pushMessage(
+                    "GeoVCS - Unable to Load Layers",
+                    f"{type(exception).__name__}: {exception}",
+                    Qgis.MessageLevel.Critical,
+                    10,
+                )
+            except Exception:  # noqa: BLE001 - iface may be unavailable
+                pass
+            items = []
 
         self.setState(Qgis.BrowserItemState.Populated)
         return items
@@ -146,13 +174,13 @@ class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
         self._update_name()
 
     def _update_name(self):
-        if GeoVCSConnectionManager().is_connected:
+        manager = GeoVCSConnectionManager()
+        if manager.is_connected:
             self.setState(Qgis.BrowserItemState.NotPopulated)
             self.setName(
-                f"GeoVCS at {GeoVCSConnectionManager().username}@{GeoVCSConnectionManager().database}/{GeoVCSConnectionManager().branch}"
+                f"GeoVCS at {manager.username}@{manager.database}/{manager.branch}"
             )
         else:
-            self.connection = None
             self.setName("GeoVCS")
             self.setState(Qgis.BrowserItemState.Populated)
 
@@ -160,9 +188,9 @@ class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
         return get_logo()
 
     def hasChildren(self):
-        return self.connection is not None
+        return GeoVCSConnectionManager().is_connected
 
-    def refresh(self, children: list[QgsDataItem] = []) -> None:
+    def refresh(self, children: list[QgsDataItem] | None = None) -> None:
         return super().refresh()
 
     def depopulate(self) -> None:
@@ -255,36 +283,104 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
     def _refresh(self, item: GeoVCSConnectionsRootItem):
         item.refresh()
 
+    @staticmethod
+    def _refresh_version_manager():
+        """Ask any open Version Manager dock to reload after connect/disconnect."""
+        try:
+            from geovcs.src.form.dock_version_manager import (
+                GeoVCSDockVersionManagerDock,
+            )
+
+            main_window = iface.mainWindow()
+            if main_window is None:
+                return
+            for dock in main_window.findChildren(GeoVCSDockVersionManagerDock):
+                if GeoVCSConnectionManager().is_connected:
+                    dock.refresh_branches()
+                else:
+                    dock._update_connection_state()
+        except Exception:  # noqa: BLE001 - optional UI refresh
+            pass
+
     def _manage_connection(self, item: GeoVCSConnectionsRootItem):
-        connection, ok = GeoVCSDialogConnectionCreate().execute()
-        if connection and ok:
-            if GeoVCSConnectionManager().is_connected:
-                GeoVCSConnectionManager().connect(connection)
-                iface.messageBar().pushMessage(  # type: ignore
-                    "GeoVCS - Connection Updated",
-                    f"Database connection '{connection.connection_string}' updated successfully.",
-                    Qgis.MessageLevel.Success,
+        manager = GeoVCSConnectionManager()
+        was_connected = manager.is_connected
+
+        if was_connected:
+            current = GeoVCSConnection(
+                host=manager.host or "",
+                port=manager.port or "",
+                database=manager.database or "",
+                branch=manager.branch or "",
+                auth_config_id=manager.auth_config_id or "",
+            )
+            connection, ok = GeoVCSDialogConnectionEdit.execute_for(current)
+        else:
+            connection, ok = GeoVCSDialogConnectionCreate.execute()
+
+        if not ok or not connection:
+            return
+
+        try:
+            manager.connect(connection)
+        except Exception as exception:  # noqa: BLE001 - surfaced to the user
+            QgsMessageLog.logMessage(
+                f"Database connection failed: {exception}",
+                "GeoVCS",
+                Qgis.MessageLevel.Critical,
+            )
+            try:
+                iface.messageBar().pushMessage(
+                    "GeoVCS - Connection Failed",
+                    f"{type(exception).__name__}: {exception}",
+                    Qgis.MessageLevel.Critical,
+                    10,
                 )
-            else:
-                GeoVCSConnectionManager().connect(connection)
-                iface.messageBar().pushMessage(  # type: ignore
-                    "GeoVCS - Connection Created",
-                    f"Database connection '{connection.connection_string}' created successfully.",
-                    Qgis.MessageLevel.Success,
-                )
+            except Exception:  # noqa: BLE001 - iface may be unavailable
+                pass
             item.refresh()
+            return
+
+        try:
+            iface.messageBar().pushMessage(  # type: ignore
+                "GeoVCS - Connection Updated" if was_connected else "GeoVCS - Connection Created",
+                f"Database connection '{connection.connection_string}' "
+                f"{'updated' if was_connected else 'created'} successfully.",
+                Qgis.MessageLevel.Success,
+            )
+        except Exception:  # noqa: BLE001 - iface may be unavailable
+            pass
+        item.refresh()
+        self._refresh_version_manager()
 
     def _disconnect(self, item: GeoVCSConnectionsRootItem):
-        GeoVCSConnectionManager().disconnect()
-        iface.messageBar().pushMessage(  # type: ignore
-            "GeoVCS - Disconnected",
-            "Database disconnected successfully.",
-            Qgis.MessageLevel.Success,
-        )
+        try:
+            GeoVCSConnectionManager().disconnect()
+        except Exception as exception:  # noqa: BLE001 - surfaced to the user
+            QgsMessageLog.logMessage(
+                f"Failed to disconnect: {exception}",
+                "GeoVCS",
+                Qgis.MessageLevel.Critical,
+            )
+            return
+
+        try:
+            iface.messageBar().pushMessage(  # type: ignore
+                "GeoVCS - Disconnected",
+                "Database disconnected successfully.",
+                Qgis.MessageLevel.Success,
+            )
+        except Exception:  # noqa: BLE001 - iface may be unavailable
+            pass
         item.depopulate()
         item.refresh()
+        self._refresh_version_manager()
 
     def _history(self, item: GeoVCSConnectionsRootItem):
-        if GeoVCSDialogHistory().exec() != QDialog.DialogCode.Accepted:
-            return
+        dialog = GeoVCSDialogHistory()
+        try:
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+        finally:
+            dialog.deleteLater()
         item.refresh()

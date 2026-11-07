@@ -44,6 +44,9 @@ class GeoVCSDialogMergeConflicts(QDialog, FORM_CLASS):
     @classmethod
     def execute(cls, conflict_tables: list[str], parent=None) -> tuple[str | None, bool]:
         dialog = cls(conflict_tables, parent)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            return dialog._selected_strategy, True
-        return None, False
+        try:
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                return dialog._selected_strategy, True
+            return None, False
+        finally:
+            dialog.deleteLater()

@@ -20,7 +20,13 @@ class GeoVCS:
         self.dock_version_manager: GeoVCSDockVersionManagerDock | None = None
 
     def initGui(self):
-        GeoVCSConnectionManager()
+        # The connection manager is a process-wide singleton, so after a
+        # disable/enable cycle it already exists but its datasource was closed
+        # during unload. Restore the saved connection explicitly.
+        try:
+            GeoVCSConnectionManager().restore()
+        except Exception:  # noqa: BLE001 - plugin must still load
+            pass
 
         self.toolbar = self.iface.addToolBar("GeoVCS")
         if self.toolbar:
@@ -59,14 +65,18 @@ class GeoVCS:
         data_item_provider_registry = QgsApplication.dataItemProviderRegistry()
         data_item_gui_provider_registry = QgsGui.dataItemGuiProviderRegistry()
 
-        self.iface.removePluginMenu("&GeoVCS", self.action_show_dock)
+        if self.action_show_dock:
+            self.iface.removePluginMenu("&GeoVCS", self.action_show_dock)
         if self.toolbar and main_window:
-            self.toolbar.removeAction(self.action_show_dock)
+            if self.action_show_dock:
+                self.toolbar.removeAction(self.action_show_dock)
             main_window.removeToolBar(self.toolbar)
+            self.toolbar = None
 
         if self.dock_version_manager:
             self.iface.removeDockWidget(self.dock_version_manager)
             self.dock_version_manager.deleteLater()
+            self.dock_version_manager = None
 
         if self.data_item_provider and data_item_provider_registry:
             data_item_provider_registry.removeProvider(self.data_item_provider)
@@ -75,3 +85,10 @@ class GeoVCS:
         if self.data_item_gui_provider and data_item_gui_provider_registry:
             data_item_gui_provider_registry.removeProvider(self.data_item_gui_provider)
             self.data_item_gui_provider = None
+
+        # Release the GDAL dataset (and therefore the MySQL session) without
+        # deleting the saved connection settings.
+        try:
+            GeoVCSConnectionManager().close()
+        except Exception:  # noqa: BLE001 - unloading must always finish
+            pass
