@@ -83,6 +83,13 @@ class GeoVCSLayerGroupItem(QgsDataCollectionItem):
         self.setCapabilitiesV2(Qgis.BrowserItemCapability.Fertile)
         self.setIcon(QgsApplication.getThemeIcon("/dbmanager.svg"))
 
+    def refresh(self, children: list[QgsDataItem] | None = None) -> None:
+        # A branch checkout changes every layer URI while the layer paths stay
+        # the same. Drop the existing children first so the browser does not
+        # reuse QgsLayerItems that still point at the previous branch.
+        self.depopulate()
+        return super().refresh()
+
     def createChildren(self) -> list[GeoVCSLayerItem]:  # type: ignore
         self.setState(Qgis.BrowserItemState.Populating)
         items: list[GeoVCSLayerItem] = []
@@ -191,6 +198,9 @@ class GeoVCSConnectionsRootItem(QgsConnectionsRootItem):
         return GeoVCSConnectionManager().is_connected
 
     def refresh(self, children: list[QgsDataItem] | None = None) -> None:
+        # The displayed name embeds the active branch, so refresh it before
+        # asking the browser model to rebuild the children.
+        self._update_name()
         return super().refresh()
 
     def depopulate(self) -> None:

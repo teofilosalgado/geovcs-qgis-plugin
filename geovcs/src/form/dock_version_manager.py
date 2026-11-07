@@ -12,7 +12,7 @@ from qgis.utils import iface
 from geovcs.src.constant import FORM_DIRECTORY_PATH, regex
 from geovcs.src.form import GeoVCSDialogCreateBranch, GeoVCSDialogMergeBranch
 from geovcs.src.model import GeoVCSConnectionManager
-from geovcs.src.util import busy_cursor
+from geovcs.src.util import busy_cursor, refresh_geovcs_browser
 
 FORM_FILE = os.path.join(FORM_DIRECTORY_PATH, "dock_version_manager.ui")
 
@@ -191,6 +191,9 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
 
         self._update_branches()
         self._update_changes()
+        # Update the Browser root label (which includes the branch name) and
+        # rebuild the layer items using the new branch URI.
+        refresh_geovcs_browser()
 
     def merge_branch(self):
         if not GeoVCSConnectionManager().is_connected:
