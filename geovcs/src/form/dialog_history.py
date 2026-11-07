@@ -181,7 +181,71 @@ class GeoVCSDialogHistory(QDialog, FORM_CLASS):
     def refresh(self):
         self._build_tree_branches()
 
+    def _iter_tree_items(self):
+        """Yield every item in the branch tree, including nested children."""
+        stack = [
+            self.tree_branches.topLevelItem(index)
+            for index in range(self.tree_branches.topLevelItemCount())
+        ]
+        while stack:
+            item = stack.pop()
+            if item is None:
+                continue
+            yield item
+            stack.extend(item.child(index) for index in range(item.childCount()))
+
+    def _branch_has_descendants(self, branch_name: str) -> bool:
+        """Return True when *branch_name* has any child branch.
+
+        The check is based on the full branch names (not only the visual tree
+        nesting), so even a branch whose parent is missing from the tree is
+        correctly treated as a descendant.
+        """
+        prefix = f"{branch_name}]"
+        for item in self._iter_tree_items():
+            item_branch = item.data(0, Qt.ItemDataRole.UserRole)
+            if item_branch and str(item_branch).startswith(prefix):
+                return True
+        return False
+
+    @staticmethod
+    def _is_current_or_ancestor(branch_name: str, current_branch: str | None) -> bool:
+        """Return True when *branch_name* is the current branch or one of its parents.
+
+        Branch hierarchy is encoded in the branch name itself, using ``]`` as
+        the separator (for example ``main]a1]a2``). A branch is therefore an
+        ancestor of the current branch when the current branch name starts with
+        ``"<branch_name>]"``.
+        """
+        if not branch_name or not current_branch:
+            return False
+        return branch_name == current_branch or current_branch.startswith(
+            f"{branch_name}]"
+        )
+
     def _delete_branch(self, branch_name: str, branch_alias: str):
+        # Defensive guard: even if the method is called programmatically, a
+        # branch that contains the current branch must never be deleted.
+        if self._is_current_or_ancestor(
+            branch_name, GeoVCSConnectionManager().branch
+        ):
+            QMessageBox.warning(
+                self,
+                "GeoVCS - Delete Branch",
+                f"The branch '{branch_name}' is the current branch or one of its "
+                "parents and cannot be deleted.",
+            )
+            return
+
+        if self._branch_has_descendants(branch_name):
+            QMessageBox.warning(
+                self,
+                "GeoVCS - Delete Branch",
+                f"The branch '{branch_name}' has child branches and cannot be "
+                "deleted because they would become orphaned.",
+            )
+            return
+
         result = QMessageBox.question(
             self,
             f"GeoVCS - Delete Branch '{branch_alias}'",
@@ -232,8 +296,15 @@ class GeoVCSDialogHistory(QDialog, FORM_CLASS):
         branch_alias: str = str(item.text(0))
         branch_name: str = str(item.data(0, Qt.ItemDataRole.UserRole))
 
-        # Prevent current branch from being removed and/or edited
-        if branch_name == GeoVCSConnectionManager().branch:
+        # A branch that is the current branch or an ancestor of it cannot be
+        # deleted. Likewise, branches with children are not leaves and cannot
+        # be deleted without orphaning their descendants. Hide the context menu
+        # entirely in these cases.
+        if self._is_current_or_ancestor(
+            branch_name, GeoVCSConnectionManager().branch
+        ):
+            return
+        if self._branch_has_descendants(branch_name):
             return
 
         # Create the menu
