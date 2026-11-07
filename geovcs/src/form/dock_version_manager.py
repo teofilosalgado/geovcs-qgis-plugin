@@ -203,7 +203,23 @@ class GeoVCSDockVersionManagerDock(QDockWidget, FORM_CLASS):
                 return
         finally:
             dialog.deleteLater()
-        self.refresh_branches()
+
+        self._update_branches()
+        self._update_changes()
+
+        # The merge changes the current branch working set without changing the
+        # layer datasource URI. refreshAllLayers() reloads every layer from its
+        # data source, clears the render cache and repaints the canvas.
+        try:
+            canvas = iface.mapCanvas()
+            if canvas is not None:
+                canvas.refreshAllLayers()
+        except Exception as exception:  # noqa: BLE001 - never break the dock
+            QgsMessageLog.logMessage(
+                f"Unable to refresh the map canvas after merge: {exception}",
+                "GeoVCS",
+                Qgis.MessageLevel.Warning,
+            )
 
     def refresh_changes(self):
         if not GeoVCSConnectionManager().is_connected:
