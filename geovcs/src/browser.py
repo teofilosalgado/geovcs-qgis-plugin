@@ -165,7 +165,7 @@ class GeoVCSProjectGroupItem(QgsDataCollectionItem):
     def createChildren(self) -> list[QgsDataItem]:  # type: ignore
         self.setState(Qgis.BrowserItemState.Populating)
 
-        dummy_name = "Water"
+        dummy_name = "[Empty]"
         dummy_path = posixpath.join(self.path(), dummy_name)
         dummy_item = GeoVCSProjectItem(self, dummy_name, dummy_path)
 
@@ -339,7 +339,9 @@ class GeoVCSDataItemGuiProvider(QgsDataItemGuiProvider):
 
         try:
             iface.messageBar().pushMessage(  # type: ignore
-                "GeoVCS - Connection Updated" if was_connected else "GeoVCS - Connection Created",
+                "GeoVCS - Connection Updated"
+                if was_connected
+                else "GeoVCS - Connection Created",
                 f"Database connection '{connection.connection_string}' "
                 f"{'updated' if was_connected else 'created'} successfully.",
                 Qgis.MessageLevel.Success,
